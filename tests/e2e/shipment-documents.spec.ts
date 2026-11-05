@@ -106,3 +106,34 @@ test("doc officer records, then cancels, a milestone (AC-03, AC-04)", async ({ p
   await expect(page.getByText("Cancelled", { exact: true })).toBeVisible();
   await expect(page.getByText("Recorded on the wrong shipment (E2E)", { exact: false })).toBeVisible();
 });
+
+test("doc officer revises the ETA and opens an exception that shows in the queue (AC-09, AC-10)", async ({ page }, info) => {
+  test.skip(!shipmentUrl, "needs the shipment from the first test");
+  await signIn(page, "doc.officer@ngb.example");
+  await page.goto(shipmentUrl);
+  const eta = page.locator("#eta");
+  const local = new Date(Date.now() + 3 * 24 * 3600e3);
+  const p = (n: number) => String(n).padStart(2, "0");
+  await eta.getByLabel("New ETA", { exact: true })
+    .fill(`${local.getFullYear()}-${p(local.getMonth() + 1)}-${p(local.getDate())}T10:00`);
+  await eta.getByLabel("Reason", { exact: true }).selectOption("schedule_confirmed");
+  await eta.getByLabel("Explanation", { exact: true }).fill("Vessel berthing confirmed (E2E)");
+  await eta.getByRole("button", { name: "Update ETA" }).click();
+  await expect(eta.getByText(/ETA updated\. This is a material change/)).toBeVisible();
+  await expect(eta.getByText("ETA history (1)")).toBeVisible();
+
+  const title = `Missing packing list (E2E ${info.project.name} ${stamp})`;
+  const panel = page.locator("#exceptions");
+  await panel.getByRole("button", { name: "Open an exception" }).click();
+  await panel.getByLabel("Type", { exact: true }).selectOption("document_missing");
+  await panel.getByLabel("Title", { exact: true }).fill(title);
+  await panel.getByLabel("Next action", { exact: true }).fill("Ask the client for the packing list");
+  await panel.getByRole("button", { name: "Open exception", exact: true }).click();
+  await expect(panel.getByText(title)).toBeVisible();
+  await expectNoHorizontalScroll(page);
+
+  await page.goto("/admin/exceptions?filter=mine");
+  await expect(page.getByText(title)).toBeVisible();
+  await expect(page.getByText("Ask the client for the packing list").first()).toBeVisible();
+  await expectNoHorizontalScroll(page);
+});

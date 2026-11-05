@@ -416,7 +416,14 @@ await expectRows("one event for that key", null, "select 1 from milestone_events
 await ms("port processing (both containers)", agent, sA.id, "port_processing_started", ago(70), { containers: [c1, c2] });
 await ms("ready for dispatch (both)", agent, sA.id, "ready_for_dispatch", ago(60), { containers: [c1, c2] });
 await msErr("agent cannot assign trucks (role matrix)", agent, sA.id, "truck_assigned", ago(59), { containers: [c1] }, /cannot record/);
-await ms("transport coordinator assigns trucks", transport, sA.id, "truck_assigned", ago(50), { containers: [c1, c2] });
+// trucks are assigned through assign_transport (0012), which records the "Truck assigned" milestone
+const AT = "select assign_transport($1::uuid, $2::uuid[], $3, $4, $5, $6, $7, $8::uuid, $9::uuid, $10, $11::timestamptz, $12::text[], $13) id";
+const atArgs = (ship, conts, o = {}) => [ship, arr(conts), o.carrier ?? "Kagera Haulage Ltd (fictional)", o.truck ?? "T 123 ABC",
+  o.trailer ?? null, o.driverName ?? null, o.phone ?? null, o.driverUser ?? null, o.route ?? null, o.border ?? null,
+  o.planned ?? null, o.refs ? `{${o.refs.map((r) => JSON.stringify(r)).join(",")}}` : null, o.override ?? null];
+await expectOk("transport coordinator assigns a truck to both containers", transport, AT, atArgs(sA.id, [c1, c2]));
+(await contOf(c1)).operational_status === "truck_assigned" && (await contOf(c2)).transport_status === "assigned"
+  ? ok("…which records the truck-assigned milestone for each") : bad("truck milestone", (await contOf(c1)).operational_status);
 await ms("loaded, with seal number", transport, sA.id, "loaded", ago(40), { containers: [c1, c2], seal: " ngb-seal-01 " });
 (await contOf(c1)).seal_number === "NGB-SEAL-01" && (await contOf(c1)).transport_status === "loaded" ? ok("seal and transport status updated") : bad("seal", JSON.stringify(await contOf(c1)));
 await msErr("gate-out before customs release is blocked", transport, sA.id, "gate_out", ago(30), { containers: [c1], location: "Dar ICD" }, /customs is not released/);
@@ -484,6 +491,191 @@ await ms("container 2 gate-out recorded again, normally", transport, sA.id, "gat
 console.log("\nAwaiting documents:");
 await ms("doc officer confirms the registered shipment with missing documents", doc, newId, "shipment_confirmed", ago(2));
 (await statusOf(newId)).overall_status === "awaiting_documents" ? ok("missing documents → awaiting documents") : bad("awaiting", (await statusOf(newId)).overall_status);
+
+console.log("\nETA revisions (0011, AC-09):");
+const RE = "select * from revise_eta($1::uuid, $2::timestamptz, $3::eta_reason_category, $4, $5)";
+const ahead = (h) => new Date(Date.now() + h * 3600e3).toISOString();
+const etaOf = async (id) => (await db.query("select current_eta, eta_reason, eta_updated_at from shipments where id = $1", [id])).rows[0];
+await expectError("finance cannot change the ETA", finance, RE, /not allowed/, [sA.id, ahead(72), "schedule_confirmed", "Plan", true]);
+await expectError("client cannot change the ETA", cA, RE, /not allowed/, [sA.id, ahead(72), "schedule_confirmed", "Plan", true]);
+await expectError("ETA needs a reason", transport, RE, /reason/, [sA.id, ahead(72), "schedule_confirmed", " ", true]);
+await expectError("ETA cannot be in the past", transport, RE, /past/, [sA.id, ago(5), "schedule_confirmed", "Plan", true]);
+await expectError("agent cannot revise an unassigned shipment", agent, RE, /not found/, [sB.id, ahead(72), "customs", "Hold", true]);
+await expectError("current_eta cannot be written directly", admin, "update shipments set current_eta = now() where id = $1", /permission denied/, [sA.id]);
+const e1 = await expectOk("first ETA set by transport", transport, RE, [sA.id, ahead(72), "schedule_confirmed", "Truck departed Dar; 3 days to Kigali", true]);
+e1?.rows[0]?.material === true ? ok("the first ETA is material") : bad("first material", JSON.stringify(e1?.rows));
+const e2 = await expectOk("ETA +1 h (delivery 3 days away)", transport, RE, [sA.id, ahead(73), "road_conditions", "Slow traffic at Morogoro", true]);
+e2?.rows[0]?.material === false && e2.rows[0].minutes_changed === 60 ? ok("1 h change is not material (threshold 6 h)") : bad("not material", JSON.stringify(e2?.rows));
+await expectRows("immaterial change is suppressed for notification", null,
+  "select 1 from eta_revisions where shipment_id = $1 and not is_material and notification_state = 'suppressed' and threshold_hours = 6", 1, [sA.id]);
+await expectOk("ETA moved to today (+10 h)", transport, RE, [sA.id, ahead(10), "schedule_confirmed", "Border cleared early", true]);
+const e4 = await expectOk("same-day ETA +3 h", transport, RE, [sA.id, ahead(13), "border_delay", "Queue at Rusumo", true]);
+e4?.rows[0]?.material === true ? ok("3 h change is material when delivery is due within 24 h (threshold 2 h)") : bad("same-day", JSON.stringify(e4?.rows));
+const e5 = await expectOk("same-day ETA +1 h", transport, RE, [sA.id, ahead(14), "border_delay", "Still queueing", false]);
+e5?.rows[0]?.material === false ? ok("1 h same-day change is not material") : bad("same-day small", JSON.stringify(e5?.rows));
+const eta = await etaOf(sA.id);
+Math.abs(new Date(eta.current_eta) - new Date(ahead(14))) < 5000 && eta.eta_reason === "Still queueing" ? ok("shipment shows the current ETA and its reason") : bad("eta", JSON.stringify(eta));
+await expectRows("previous ETAs stay auditable (5 revisions)", ops, "select 1 from eta_revisions where shipment_id = $1", 5, [sA.id]);
+await expectRows("client sees client-visible revisions only", cA, "select 1 from eta_revisions where shipment_id = $1", 4, [sA.id]);
+await expectRows("other client sees none", cB, "select 1 from eta_revisions", 0);
+await expectError("same ETA again is refused", transport, RE, /unchanged/, [sA.id, eta.current_eta, "other", "No change", true]);
+const rev1 = (await db.query("select id from eta_revisions where shipment_id = $1 limit 1", [sA.id])).rows[0].id;
+await expectError("revisions cannot be edited", null, "update eta_revisions set reason = 'x' where id = $1", /append-only/, [rev1]);
+await expectError("revisions cannot be deleted", null, "delete from eta_revisions where id = $1", /append-only/, [rev1]);
+await expectError("users cannot write revisions", ops, "insert into eta_revisions (shipment_id, new_eta, reason_category, reason, is_material, threshold_hours, notification_state) values ($1, now(), 'other', 'xxx', true, 6, 'pending')", /permission denied/, [sA.id]);
+await expectRows("doc officer cannot change thresholds", doc, "update app_settings set value = '1' where key = 'eta.material_hours_other' returning key", 0);
+await expectRows("admin can change thresholds", admin, "update app_settings set value = '8' where key = 'eta.material_hours_other' returning key", 1);
+await expectRows("threshold change is audited", null, "select 1 from audit_log where table_name = 'app_settings' and action = 'UPDATE' and actor_id = $1", 1, [admin]);
+await db.query("update app_settings set value = '6' where key = 'eta.material_hours_other'");
+await expectRows("clients cannot read settings", cA, "select 1 from app_settings", 0);
+
+console.log("\nTransport (0012):");
+await expectRows("staff read the configured routes", transport, "select 1 from routes", 4);
+await expectRows("clients do not read routes", cA, "select 1 from routes", 0);
+await expectError("transport coordinator cannot add routes", transport,
+  "insert into routes (code, name, origin_port_id, destination_country, destination_city, transit_estimate_hours) values ('DAR-GOM', 'Dar to Goma', $1, 'CD', 'Goma', 120)", /row-level security/, [dar]);
+await expectOk("ops manager adds a route", ops,
+  "insert into routes (code, name, origin_port_id, destination_country, destination_city, border_crossing, transit_estimate_hours) values ('DAR-GOM', 'Dar es Salaam → Goma via Rusumo', $1, 'CD', 'Goma', 'Rusumo; Gisenyi', 120)", [dar]);
+const kgl = (await db.query("select id from routes where code = 'DAR-KGL'")).rows[0].id;
+
+// fresh shipment for client A, moved to ready for dispatch by the ops manager
+const okT = await expectOk("doc officer registers a shipment for the transport checks", doc, reg,
+  [shipJson("TESTBL-TRN"), JSON.stringify([{ container_number: "TRNU1000000" }, { container_number: "TRNU1000015" }])]);
+const sT = okT?.rows[0]?.shipment_id;
+const [t1, t2] = (await db.query("select id from containers where shipment_id = $1 order by container_number", [sT])).rows.map((r) => r.id);
+await ms("confirm", doc, sT, "shipment_confirmed", ago(60));
+await ms("vessel arrived", ops, sT, "vessel_arrived", ago(59), { location: "Dar es Salaam" });
+await ms("discharged", ops, sT, "container_discharged", ago(58), { containers: [t1, t2], location: "TICTS" });
+await ms("port processing", ops, sT, "port_processing_started", ago(57), { containers: [t1, t2] });
+await ms("ready for dispatch", ops, sT, "ready_for_dispatch", ago(2), { containers: [t1, t2] });
+
+await expectError("clearing agent cannot assign transport", agent, AT, /not allowed/, atArgs(sT, [t1]));
+await expectError("invalid truck registration is refused", transport, AT, /truck registration/, atArgs(sT, [t1], { truck: "<script>" }));
+await expectError("driver phone must be international", transport, AT, /international/, atArgs(sT, [t1], { driverName: "Eric N.", phone: "0788123456" }));
+await expectError("driver user must have the driver role", transport, AT, /not an active driver/, atArgs(sT, [t1], { driverName: "Eric N.", driverUser: agent }));
+await expectError("container of another shipment is refused", transport, AT, /not on this shipment/, atArgs(sT, [c1]));
+const asg1 = await expectOk("transport assigns truck, driver and route to container 1", transport, AT,
+  atArgs(sT, [t1], { truck: " t 456 def ", trailer: "tl 789", driverName: "Eric Niyonzima (fictional)", phone: "+250 788 000 111",
+    driverUser: driver, route: kgl, planned: ahead(4), refs: ["T1-2026-0001", " "] }));
+const a1 = asg1?.rows[0]?.id;
+const aRow = (await db.query("select * from transport_assignments where id = $1", [a1])).rows[0];
+aRow?.truck_registration === "T 456 DEF" && aRow.border_crossing === "Rusumo" && aRow.transit_document_refs.length === 1
+  ? ok("registration normalised, border taken from the route, empty refs dropped") : bad("assignment row", JSON.stringify(aRow));
+(await contOf(t1)).operational_status === "truck_assigned" ? ok("container 1 → truck assigned") : bad("t1", (await contOf(t1)).operational_status);
+await expectRows("the driver user is given access to the shipment", null, "select 1 from shipment_assignments where shipment_id = $1 and user_id = $2", 1, [sT, driver]);
+await expectError("a container cannot get a second truck", transport, AT, /already has a truck/, atArgs(sT, [t1], { truck: "T 999 ZZZ" }));
+await expectRows("client sees the truck assignment", cA, "select 1 from transport_assignments where shipment_id = $1", 1, [sT]);
+await expectRows("client cannot see the driver's name or phone", cA, "select 1 from driver_contacts", 0);
+await expectRows("other client sees no assignment", cB, "select 1 from transport_assignments where shipment_id = $1", 0, [sT]);
+await expectRows("assigned driver sees own contact record", driver, "select 1 from driver_contacts where assignment_id = $1", 1, [a1]);
+await expectRows("staff see the driver contact", ops, "select 1 from driver_contacts where assignment_id = $1 and driver_phone = '+250788000111'", 1, [a1]);
+await expectError("assignments cannot be inserted directly", transport,
+  "insert into transport_assignments (shipment_id, transporter_name, truck_registration) values ($1, 'X Ltd', 'T 1 A')", /permission denied/, [sT]);
+await expectError("assignment status cannot be changed directly", ops, "update transport_assignments set status = 'cancelled' where id = $1", /permission denied/, [a1]);
+await expectRows("planned loading can be updated", transport, "update transport_assignments set planned_loading_at = now() + interval '5 hours' where id = $1 returning id", 1, [a1]);
+
+await ms("container 1 loaded", transport, sT, "loaded", ago(1), { containers: [t1], seal: "SEAL-T1" });
+(await db.query("select actual_loading_at from transport_assignments where id = $1", [a1])).rows[0].actual_loading_at
+  ? ok("loaded milestone records the actual loading time") : bad("actual loading", "null");
+await msErr("gate-out still blocked by customs", transport, sT, "gate_out", ago(0.5), { containers: [t1], location: "Dar ICD" }, /customs is not released/);
+for (const m of ["customs_entry_prepared", "customs_submitted", "customs_released"]) await ms(m, ops, sT, m, ago(0.6));
+await ms("container 1 gate-out with truck and release", transport, sT, "gate_out", ago(0.2), { containers: [t1], location: "Dar ICD" });
+
+const asg2 = await expectOk("truck for container 2", transport, AT, atArgs(sT, [t2], { truck: "T 222 BBB", driverName: "Paul K. (fictional)" }));
+await ms("container 2 loaded", transport, sT, "loaded", ago(0.4), { containers: [t2] });
+const CT = "select cancel_transport_assignment($1, $2)";
+await expectError("agent cannot cancel transport", agent, CT, /not allowed/, [asg2?.rows[0]?.id, "Breakdown"]);
+await expectError("cancel needs a reason", transport, CT, /reason/, [asg2?.rows[0]?.id, " "]);
+await expectOk("transport cancels container 2's truck (breakdown)", transport, CT, [asg2?.rows[0]?.id, "Truck broke down at the ICD"]);
+await expectRows("cancellation recorded as a staff-only update with the reason internal", null,
+  "select 1 from milestone_events e join milestone_internal_notes n on n.batch_id = e.batch_id where e.shipment_id = $1 and e.milestone_type = 'update' and not e.client_visible and n.note like 'Reason: Truck broke down%'", 1, [sT]);
+await msErr("gate-out without a truck is blocked", transport, sT, "gate_out", ago(0.1), { containers: [t2], location: "Dar ICD" }, /Assign a truck/);
+await expectOk("replacement truck for container 2", transport, AT, atArgs(sT, [t2], { truck: "T 333 CCC" }));
+(await contOf(t2)).operational_status === "loaded" ? ok("re-assignment keeps the container loaded (recorded as an update)") : bad("t2", (await contOf(t2)).operational_status);
+await expectError("cannot cancel after gate-out", transport, CT, /already left/, [a1, "Changed mind"]);
+await expectError("cannot cancel twice", transport, CT, /already cancelled/, [asg2?.rows[0]?.id, "again"]);
+await ms("container 2 gate-out", transport, sT, "gate_out", ago(0.05), { containers: [t2], location: "Dar ICD" });
+(await statusOf(sT)).overall_status === "in_transit" ? ok("shipment in transit") : bad("sT", (await statusOf(sT)).overall_status);
+
+console.log("\nExceptions & SLA (0013, AC-10):");
+const OX = "select open_exception($1::uuid, $2::exception_type, $3, $4::exception_severity, $5, $6::uuid, $7::uuid, $8, $9::timestamptz, $10, $11) id";
+const oxArgs = (ship, o = {}) => [ship, o.type ?? "customs_hold", o.title ?? "Customs hold on T1 document", o.severity ?? "high",
+  o.details ?? "Officer queried the HS code", o.container ?? null, o.owner ?? null, o.next ?? "Send corrected invoice", o.follow ?? ahead(4),
+  o.clientMessage ?? null, o.clientVisible ?? false];
+const flag = async (id) => (await db.query("select has_open_exception from shipments where id = $1", [id])).rows[0].has_open_exception;
+await expectError("client cannot open exceptions", cA, OX, /not allowed/, oxArgs(sA.id));
+await expectError("driver cannot open exceptions", driver, OX, /not allowed/, oxArgs(sA.id));
+await expectError("title is required", doc, OX, /title/, oxArgs(sA.id, { title: "x" }));
+await expectError("container must be on the shipment", doc, OX, /not on this shipment/, oxArgs(sA.id, { container: t1 }));
+const x1 = (await expectOk("doc officer opens an exception on shipment A", doc, OX, oxArgs(sA.id, { container: c1 })))?.rows[0]?.id;
+(await flag(sA.id)) ? ok("shipment flagged with an open exception; status unchanged") : bad("flag", "false");
+const xr = (await db.query("select owner_id, last_event_id, next_action, source from exceptions where id = $1", [x1])).rows[0];
+xr.owner_id === doc && xr.last_event_id && xr.source === "staff" ? ok("owner defaults to the shipment's responsible person; last event linked") : bad("exception row", JSON.stringify(xr));
+await expectRows("client cannot read exceptions (internal details)", cA, "select 1 from exceptions", 0);
+await expectRows("driver cannot read exceptions", driver, "select 1 from exceptions", 0);
+await expectRows("agent assigned to shipment A sees it", agent, "select 1 from exceptions where id = $1", 1, [x1]);
+await expectRows("finance sees it", finance, "select 1 from exceptions where id = $1", 1, [x1]);
+await expectError("exceptions cannot be written directly", ops, "update exceptions set status = 'resolved' where id = $1", /permission denied/, [x1]);
+
+const UX = "select update_exception($1, $2, $3, $4::timestamptz, $5::uuid, $6::exception_severity)";
+await expectOk("transport adds a follow-up note", transport, UX, [x1, "Called the customs office", null, null, null, null]);
+await expectError("non-owner cannot reassign", transport, UX, /Only the owner/, [x1, null, null, null, transport, null]);
+await expectError("owner must be staff", ops, UX, /active NGB staff/, [x1, null, null, null, cA, null]);
+await expectOk("ops manager reassigns to transport and raises severity", ops, UX, [x1, null, "Collect corrected T1", ahead(2), transport, "critical"]);
+await expectRows("each change is logged", null, "select kind from exception_updates where exception_id = $1", 5, [x1]);
+const EX = "select escalate_exception($1, $2)";
+await expectError("escalation needs a note", transport, EX, /Say why/, [x1, ""]);
+await expectOk("owner escalates to the operations manager", transport, EX, [x1, "Client threatening to cancel"]);
+await expectError("cannot escalate twice", transport, EX, /already escalated/, [x1, "again"]);
+const RX = "select resolve_exception($1, $2)";
+await expectError("non-owner staff cannot resolve", agent, RX, /Only the owner/, [x1, "Done"]);
+await expectError("resolution needs a description", transport, RX, /Describe/, [x1, ""]);
+await expectOk("owner resolves with a resolution", transport, RX, [x1, "Corrected invoice accepted; T1 released"]);
+!(await flag(sA.id)) ? ok("flag cleared when no exception is open") : bad("flag", "still true");
+await expectError("cannot update a resolved exception", ops, UX, /resolved/, [x1, "late note", null, null, null, null]);
+const xu1 = (await db.query("select id from exception_updates where exception_id = $1 limit 1", [x1])).rows[0].id;
+await expectError("exception log is append-only", null, "delete from exception_updates where id = $1", /not allowed|append-only|permitted/i, [xu1]);
+
+// SLA scan
+const SCAN = "select * from run_sla_scan()";
+await expectError("transport cannot run the SLA check", transport, SCAN, /Only an operations manager/);
+await expectError("SLA internals are not callable", ops, "select * from private.sla_scan()", /permission denied/);
+const okS = await expectOk("doc officer registers a shipment for the SLA checks", doc, reg,
+  [shipJson("TESTBL-SLA"), JSON.stringify([{ container_number: "SLAU1000003" }])]);
+const sS = okS?.rows[0]?.shipment_id;
+const s1 = (await db.query("select id from containers where shipment_id = $1", [sS])).rows[0].id;
+await ms("confirm", doc, sS, "shipment_confirmed", ago(120));
+await ms("vessel arrived", ops, sS, "vessel_arrived", ago(110), { location: "Dar es Salaam" });
+await ms("discharged 100 h ago", ops, sS, "container_discharged", ago(100), { containers: [s1], location: "TICTS" });
+const scan1 = await expectOk("ops manager runs the SLA check", ops, SCAN);
+scan1?.rows[0]?.opened >= 1 ? ok(`scan opened ${scan1.rows[0].opened} exception(s)`) : bad("scan", JSON.stringify(scan1?.rows));
+const px = (await db.query("select * from exceptions where dedup_key = $1 and status = 'open'", [`port_processing:${s1}`])).rows[0];
+px && px.exception_type === "port_sla_breach" && px.owner_id === doc && px.last_event_id && px.next_action && px.source === "system"
+  ? ok("port SLA breach queued with owner, last event and next action (AC-10)") : bad("port exception", JSON.stringify(px));
+(await flag(sS)) && (await statusOf(sS)).overall_status === "container_discharged" ? ok("status kept (exception is not a status)") : bad("sS", "flag/status");
+const scan2 = (await as(ops, SCAN)).rows[0];
+(await db.query("select count(*)::int n from exceptions where dedup_key = $1", [`port_processing:${s1}`])).rows[0].n === 1
+  ? ok("running again does not duplicate") : bad("dedup", JSON.stringify(scan2));
+await db.query("update exceptions set opened_at = now() - interval '25 hours' where id = $1", [px.id]);
+await as(ops, SCAN);
+(await db.query("select escalated_at from exceptions where id = $1", [px.id])).rows[0].escalated_at
+  ? ok("unresolved past 24 h → escalated to the operations manager") : bad("escalation", "not escalated");
+await ms("port processing", ops, sS, "port_processing_started", ago(40), { containers: [s1] });
+await ms("ready for dispatch 30 h ago", ops, sS, "ready_for_dispatch", ago(30), { containers: [s1] });
+await as(ops, SCAN);
+const pxAfter = (await db.query("select status, resolution from exceptions where id = $1", [px.id])).rows[0];
+pxAfter.status === "resolved" && /Cleared automatically/.test(pxAfter.resolution) ? ok("port exception cleared once the container moved on") : bad("clear", JSON.stringify(pxAfter));
+await expectRows("dispatch risk opened (ready > 24 h, not gated out)", null,
+  "select 1 from exceptions where dedup_key = $1 and status = 'open' and exception_type = 'dispatch_risk'", 1, [`dispatch:${s1}`]);
+// empty return overdue (container 1 of shipment A, delivered by the driver)
+await ms("driver records delivery", driver, sA.id, "delivered", ago(48), { containers: [c1] });
+await expectOk("return deadline set (yesterday)", doc, "update containers set return_deadline = current_date - 1 where id = $1", [c1]);
+await as(ops, SCAN);
+await expectRows("return overdue exception opened", null,
+  "select 1 from exceptions where dedup_key = $1 and status = 'open' and exception_type = 'return_overdue'", 1, [`empty_return:${c1}`]);
+(await contOf(c1)).return_status === "return_overdue" ? ok("container return status → overdue") : bad("return", (await contOf(c1)).return_status);
+await expectRows("system actions are logged without a user", null,
+  "select 1 from exception_updates u join exceptions x on x.id = u.exception_id where x.source = 'system' and u.created_by is null", 5);
 
 console.log("\nProfile sync:");
 await expectRows("user with no profile sees no shipments", nobody, "select id from shipments", 0);

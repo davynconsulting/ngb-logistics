@@ -5,6 +5,7 @@ import { NavLinks, type NavItem } from "./nav-links";
 const ITEMS: (NavItem & { roles?: AppRole[] })[] = [
   { href: "/admin", label: "Overview", exact: true },
   { href: "/admin/shipments", label: "Shipments" },
+  { href: "/admin/exceptions", label: "Exceptions", roles: ["admin", "ops_manager", "doc_officer", "clearing_agent", "transport_coord", "finance"] },
   { href: "/admin/clients", label: "Clients", roles: ["admin", "ops_manager", "doc_officer", "finance"] },
   { href: "/admin/users", label: "Users", roles: ["admin", "ops_manager"] },
 ];

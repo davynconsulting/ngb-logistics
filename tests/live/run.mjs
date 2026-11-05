@@ -11,7 +11,7 @@ try {
   process.exit(1);
 }
 
-const suites = ["auth-routing.mjs", "admin-flows.mjs", "documents.mjs", "milestones.mjs"];
+const suites = ["auth-routing.mjs", "admin-flows.mjs", "documents.mjs", "milestones.mjs", "operations.mjs"];
 const crashed = [];
 for (const s of suites) {
   try {

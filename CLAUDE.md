@@ -59,6 +59,13 @@ Don't generate the whole app in one go. **Don't make destructive database change
   - `milestone_events` is append-only. A correction or cancellation is a new row. Read through the `milestone_timeline` view, which applies the latest correction.
   - The shipment's overall status is the least-advanced container. Gate-out needs customs released. Out-of-order steps need an ops manager/admin override with a reason.
   - Forms that create the default time or the idempotency key render on the client only (`useSyncExternalStore`), because the server runs in UTC.
+- **ETA (0011):** `current_eta` changes only through `revise_eta()`, which needs a reason. Every value is kept in the append-only `eta_revisions`. Materiality (>2 h if due within 24 h, else >6 h) is decided in the database from `app_settings`.
+- **Transport (0012):** trucks are assigned only through `assign_transport()`, which records "Truck assigned" via `record_milestone`. Cancel with `cancel_transport_assignment()`. Gate-out needs an active assignment (trigger) and customs release. Driver name/phone live in `driver_contacts`, which clients can never read.
+- **Exceptions and SLA (0013):** an exception is a record, not a status (`shipments.has_open_exception` is set by trigger). Change exceptions only through `open_exception`, `update_exception`, `escalate_exception` and `resolve_exception`; every step is logged in `exception_updates`.
+  - `private.sla_scan()` runs every 15 minutes (pg_cron job `ngb-sla-scan`). Ops managers can also trigger it with `run_sla_scan()`.
+  - Thresholds are in `sla_rules`. Clients have no access to exceptions until the portal view in Sprint 3.
+  - `supabase db lint` reports "pg_temp.sla_now does not exist" for `sla_scan`. That's a false positive: the temp table is created at run time.
+- Forms that submit manually (keeping values on a refusal, converting local times to ISO) use `components/forms/use-form-action.ts`. Don't call `Date.now()` while rendering (lint purity rule): compute time-based flags in the DAL.
 - **Testing server actions over HTTP:** POST to the page with a `Next-Action: <id>` header. Get the ID from `.next/server/server-reference-manifest.json`. Encode the arguments with React's `encodeReply` from `next/dist/compiled/react-server-dom-turbopack/client.node.js`. Field order matters when an action takes a FormData, so don't hand-build the encoding.
 - **Rendered HTML contains `<!-- -->`** between adjacent text nodes (e.g. `Earlier versions (<!-- -->1<!-- -->)`). Strip these before matching text in tests.
 - **Forms** use shadcn's `field` component with react-hook-form + zod, not the older `form` component.
@@ -67,7 +74,7 @@ Don't generate the whole app in one go. **Don't make destructive database change
 - `npm run dev` / `npm run build` / `npm run lint` / `npm run typecheck`
 - `npm test` (Vitest unit tests in `tests/unit`)
 - `npm run test:e2e`: Playwright, mobile and desktop, in `tests/e2e`.
-  - Covers login and routing, shipment registration, and document upload/verify/download.
+  - Covers login and routing, shipment registration, document upload/verify/download, milestones, ETA and exceptions.
   - It can't run on this Mac (macOS 12), so run it in CI. It needs `E2E_PASSWORD` (the seeded password) and the `NEXT_PUBLIC_SUPABASE_*` variables.
   - Locally the password is read from `.env.local`.
 - `npm run test:db`: applies every migration to an in-memory Postgres (PGlite, no Docker, no network) and checks RLS, grants, RPCs and triggers as each role (`tests/db/rls.check.mjs`).
@@ -75,7 +82,7 @@ Don't generate the whole app in one go. **Don't make destructive database change
   - This harness stands in for pgTAP, which would need local Docker.
 - `npm run test:live`: real flows against the **dev** project and a local production server.
   - First run `npm run build && npx next start -p 3123`.
-  - Suites are in `tests/live`: auth/routing, admin flows, documents, milestones.
+  - Suites are in `tests/live`: auth/routing, admin flows, documents, milestones, operations (ETA/transport/exceptions).
   - It calls the real server actions over HTTP and adds fictional test data each run.
   - Supabase allows about 30 sign-ins per 5 minutes per IP, so each user signs in once per run. Don't run it twice back-to-back.
 - Migrations live in `supabase/migrations/`. Supabase CLI v3 targets a local database by default, so always pass **`--remote`**:

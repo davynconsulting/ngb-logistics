@@ -14,6 +14,38 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_settings: {
+        Row: {
+          description: string | null
+          key: string
+          updated_at: string
+          updated_by: string | null
+          value: Json
+        }
+        Insert: {
+          description?: string | null
+          key: string
+          updated_at?: string
+          updated_by?: string | null
+          value: Json
+        }
+        Update: {
+          description?: string | null
+          key?: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "app_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_log: {
         Row: {
           action: string
@@ -263,6 +295,281 @@ export type Database = {
             columns: ["verified_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      driver_contacts: {
+        Row: {
+          assignment_id: string
+          driver_name: string
+          driver_phone: string | null
+        }
+        Insert: {
+          assignment_id: string
+          driver_name: string
+          driver_phone?: string | null
+        }
+        Update: {
+          assignment_id?: string
+          driver_name?: string
+          driver_phone?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "driver_contacts_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: true
+            referencedRelation: "transport_assignments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      eta_revisions: {
+        Row: {
+          change_minutes: number | null
+          client_visible: boolean
+          id: string
+          is_material: boolean
+          new_eta: string
+          notification_state: Database["public"]["Enums"]["notification_state"]
+          previous_eta: string | null
+          reason: string
+          reason_category: Database["public"]["Enums"]["eta_reason_category"]
+          revised_at: string
+          revised_by: string | null
+          shipment_id: string
+          threshold_hours: number
+        }
+        Insert: {
+          change_minutes?: number | null
+          client_visible?: boolean
+          id?: string
+          is_material: boolean
+          new_eta: string
+          notification_state: Database["public"]["Enums"]["notification_state"]
+          previous_eta?: string | null
+          reason: string
+          reason_category: Database["public"]["Enums"]["eta_reason_category"]
+          revised_at?: string
+          revised_by?: string | null
+          shipment_id: string
+          threshold_hours: number
+        }
+        Update: {
+          change_minutes?: number | null
+          client_visible?: boolean
+          id?: string
+          is_material?: boolean
+          new_eta?: string
+          notification_state?: Database["public"]["Enums"]["notification_state"]
+          previous_eta?: string | null
+          reason?: string
+          reason_category?: Database["public"]["Enums"]["eta_reason_category"]
+          revised_at?: string
+          revised_by?: string | null
+          shipment_id?: string
+          threshold_hours?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eta_revisions_revised_by_fkey"
+            columns: ["revised_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eta_revisions_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      exception_updates: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          data: Json | null
+          exception_id: string
+          id: string
+          kind: Database["public"]["Enums"]["exception_update_kind"]
+          note: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          data?: Json | null
+          exception_id: string
+          id?: string
+          kind: Database["public"]["Enums"]["exception_update_kind"]
+          note?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          data?: Json | null
+          exception_id?: string
+          id?: string
+          kind?: Database["public"]["Enums"]["exception_update_kind"]
+          note?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exception_updates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exception_updates_exception_id_fkey"
+            columns: ["exception_id"]
+            isOneToOne: false
+            referencedRelation: "exceptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      exceptions: {
+        Row: {
+          client_message: string | null
+          client_visible: boolean
+          container_id: string | null
+          dedup_key: string | null
+          details: string | null
+          escalated_at: string | null
+          exception_type: Database["public"]["Enums"]["exception_type"]
+          id: string
+          last_event_id: string | null
+          next_action: string | null
+          next_follow_up_at: string | null
+          opened_at: string
+          opened_by: string | null
+          owner_id: string | null
+          resolution: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          severity: Database["public"]["Enums"]["exception_severity"]
+          shipment_id: string
+          sla_rule_id: string | null
+          sla_stage: Database["public"]["Enums"]["sla_stage"] | null
+          source: Database["public"]["Enums"]["event_source"]
+          status: Database["public"]["Enums"]["exception_status"]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          client_message?: string | null
+          client_visible?: boolean
+          container_id?: string | null
+          dedup_key?: string | null
+          details?: string | null
+          escalated_at?: string | null
+          exception_type: Database["public"]["Enums"]["exception_type"]
+          id?: string
+          last_event_id?: string | null
+          next_action?: string | null
+          next_follow_up_at?: string | null
+          opened_at?: string
+          opened_by?: string | null
+          owner_id?: string | null
+          resolution?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: Database["public"]["Enums"]["exception_severity"]
+          shipment_id: string
+          sla_rule_id?: string | null
+          sla_stage?: Database["public"]["Enums"]["sla_stage"] | null
+          source?: Database["public"]["Enums"]["event_source"]
+          status?: Database["public"]["Enums"]["exception_status"]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          client_message?: string | null
+          client_visible?: boolean
+          container_id?: string | null
+          dedup_key?: string | null
+          details?: string | null
+          escalated_at?: string | null
+          exception_type?: Database["public"]["Enums"]["exception_type"]
+          id?: string
+          last_event_id?: string | null
+          next_action?: string | null
+          next_follow_up_at?: string | null
+          opened_at?: string
+          opened_by?: string | null
+          owner_id?: string | null
+          resolution?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: Database["public"]["Enums"]["exception_severity"]
+          shipment_id?: string
+          sla_rule_id?: string | null
+          sla_stage?: Database["public"]["Enums"]["sla_stage"] | null
+          source?: Database["public"]["Enums"]["event_source"]
+          status?: Database["public"]["Enums"]["exception_status"]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exceptions_container_id_fkey"
+            columns: ["container_id"]
+            isOneToOne: false
+            referencedRelation: "containers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exceptions_last_event_id_fkey"
+            columns: ["last_event_id"]
+            isOneToOne: false
+            referencedRelation: "milestone_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exceptions_last_event_id_fkey"
+            columns: ["last_event_id"]
+            isOneToOne: false
+            referencedRelation: "milestone_timeline"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exceptions_opened_by_fkey"
+            columns: ["opened_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exceptions_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exceptions_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exceptions_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exceptions_sla_rule_id_fkey"
+            columns: ["sla_rule_id"]
+            isOneToOne: false
+            referencedRelation: "sla_rules"
             referencedColumns: ["id"]
           },
         ]
@@ -703,6 +1010,56 @@ export type Database = {
           },
         ]
       }
+      routes: {
+        Row: {
+          border_crossing: string | null
+          checkpoint_alert_hours: number
+          code: string
+          created_at: string
+          destination_city: string
+          destination_country: string
+          id: string
+          is_active: boolean
+          name: string
+          origin_port_id: string
+          transit_estimate_hours: number
+        }
+        Insert: {
+          border_crossing?: string | null
+          checkpoint_alert_hours?: number
+          code: string
+          created_at?: string
+          destination_city: string
+          destination_country: string
+          id?: string
+          is_active?: boolean
+          name: string
+          origin_port_id: string
+          transit_estimate_hours: number
+        }
+        Update: {
+          border_crossing?: string | null
+          checkpoint_alert_hours?: number
+          code?: string
+          created_at?: string
+          destination_city?: string
+          destination_country?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          origin_port_id?: string
+          transit_estimate_hours?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "routes_origin_port_id_fkey"
+            columns: ["origin_port_id"]
+            isOneToOne: false
+            referencedRelation: "ports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shipment_assignments: {
         Row: {
           assigned_at: string
@@ -886,6 +1243,186 @@ export type Database = {
           },
         ]
       }
+      sla_rules: {
+        Row: {
+          created_at: string
+          description: string | null
+          escalate_after_hours: number
+          id: string
+          is_active: boolean
+          port_id: string | null
+          route_id: string | null
+          severity: Database["public"]["Enums"]["exception_severity"]
+          stage: Database["public"]["Enums"]["sla_stage"]
+          threshold_hours: number
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          escalate_after_hours?: number
+          id?: string
+          is_active?: boolean
+          port_id?: string | null
+          route_id?: string | null
+          severity?: Database["public"]["Enums"]["exception_severity"]
+          stage: Database["public"]["Enums"]["sla_stage"]
+          threshold_hours: number
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          escalate_after_hours?: number
+          id?: string
+          is_active?: boolean
+          port_id?: string | null
+          route_id?: string | null
+          severity?: Database["public"]["Enums"]["exception_severity"]
+          stage?: Database["public"]["Enums"]["sla_stage"]
+          threshold_hours?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sla_rules_port_id_fkey"
+            columns: ["port_id"]
+            isOneToOne: false
+            referencedRelation: "ports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sla_rules_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "routes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      transport_assignment_containers: {
+        Row: {
+          assignment_id: string
+          container_id: string
+        }
+        Insert: {
+          assignment_id: string
+          container_id: string
+        }
+        Update: {
+          assignment_id?: string
+          container_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transport_assignment_containers_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "transport_assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transport_assignment_containers_container_id_fkey"
+            columns: ["container_id"]
+            isOneToOne: false
+            referencedRelation: "containers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      transport_assignments: {
+        Row: {
+          actual_loading_at: string | null
+          assigned_at: string
+          assigned_by: string | null
+          border_crossing: string | null
+          cancel_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          driver_user_id: string | null
+          id: string
+          planned_loading_at: string | null
+          route_id: string | null
+          shipment_id: string
+          status: Database["public"]["Enums"]["assignment_status"]
+          trailer_registration: string | null
+          transit_document_refs: string[]
+          transporter_name: string
+          truck_registration: string
+        }
+        Insert: {
+          actual_loading_at?: string | null
+          assigned_at?: string
+          assigned_by?: string | null
+          border_crossing?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          driver_user_id?: string | null
+          id?: string
+          planned_loading_at?: string | null
+          route_id?: string | null
+          shipment_id: string
+          status?: Database["public"]["Enums"]["assignment_status"]
+          trailer_registration?: string | null
+          transit_document_refs?: string[]
+          transporter_name: string
+          truck_registration: string
+        }
+        Update: {
+          actual_loading_at?: string | null
+          assigned_at?: string
+          assigned_by?: string | null
+          border_crossing?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          driver_user_id?: string | null
+          id?: string
+          planned_loading_at?: string | null
+          route_id?: string | null
+          shipment_id?: string
+          status?: Database["public"]["Enums"]["assignment_status"]
+          trailer_registration?: string | null
+          transit_document_refs?: string[]
+          transporter_name?: string
+          truck_registration?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transport_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transport_assignments_cancelled_by_fkey"
+            columns: ["cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transport_assignments_driver_user_id_fkey"
+            columns: ["driver_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transport_assignments_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "routes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transport_assignments_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       milestone_timeline: {
@@ -959,6 +1496,28 @@ export type Database = {
       }
     }
     Functions: {
+      assign_transport: {
+        Args: {
+          p_border_crossing?: string
+          p_container_ids: string[]
+          p_driver_name?: string
+          p_driver_phone?: string
+          p_driver_user_id?: string
+          p_override_reason?: string
+          p_planned_loading_at?: string
+          p_route_id?: string
+          p_shipment_id: string
+          p_trailer_registration?: string
+          p_transit_document_refs?: string[]
+          p_transporter_name: string
+          p_truck_registration: string
+        }
+        Returns: string
+      }
+      cancel_transport_assignment: {
+        Args: { p_assignment_id: string; p_reason: string }
+        Returns: undefined
+      }
       correct_milestone: {
         Args: {
           p_event_at?: string
@@ -967,6 +1526,26 @@ export type Database = {
           p_public_note?: string
           p_reason: string
           p_void?: boolean
+        }
+        Returns: string
+      }
+      escalate_exception: {
+        Args: { p_exception_id: string; p_note: string }
+        Returns: undefined
+      }
+      open_exception: {
+        Args: {
+          p_client_message?: string
+          p_client_visible?: boolean
+          p_container_id?: string
+          p_details?: string
+          p_next_action?: string
+          p_next_follow_up_at?: string
+          p_owner_id?: string
+          p_severity?: Database["public"]["Enums"]["exception_severity"]
+          p_shipment_id: string
+          p_title: string
+          p_type: Database["public"]["Enums"]["exception_type"]
         }
         Returns: string
       }
@@ -1019,11 +1598,48 @@ export type Database = {
           shipment_reference: string
         }[]
       }
+      resolve_exception: {
+        Args: { p_exception_id: string; p_resolution: string }
+        Returns: undefined
+      }
       review_document: {
         Args: {
           p_decision: Database["public"]["Enums"]["verification_status"]
           p_document_id: string
           p_reason?: string
+        }
+        Returns: undefined
+      }
+      revise_eta: {
+        Args: {
+          p_client_visible?: boolean
+          p_new_eta: string
+          p_reason: string
+          p_reason_category: Database["public"]["Enums"]["eta_reason_category"]
+          p_shipment_id: string
+        }
+        Returns: {
+          material: boolean
+          minutes_changed: number
+          revision_id: string
+        }[]
+      }
+      run_sla_scan: {
+        Args: never
+        Returns: {
+          cleared: number
+          escalated: number
+          opened: number
+        }[]
+      }
+      update_exception: {
+        Args: {
+          p_exception_id: string
+          p_next_action?: string
+          p_next_follow_up_at?: string
+          p_note?: string
+          p_owner_id?: string
+          p_severity?: Database["public"]["Enums"]["exception_severity"]
         }
         Returns: undefined
       }
@@ -1038,6 +1654,7 @@ export type Database = {
         | "driver"
         | "finance"
         | "client"
+      assignment_status: "active" | "cancelled"
       customs_status:
         | "not_started"
         | "entry_in_preparation"
@@ -1074,7 +1691,40 @@ export type Database = {
         | "invoice"
         | "receipt"
         | "other"
+      eta_reason_category:
+        | "vessel_delay"
+        | "port_congestion"
+        | "documents"
+        | "customs"
+        | "truck_availability"
+        | "road_conditions"
+        | "border_delay"
+        | "weather"
+        | "client_request"
+        | "schedule_confirmed"
+        | "other"
       event_source: "staff" | "driver" | "integration" | "system"
+      exception_severity: "low" | "medium" | "high" | "critical"
+      exception_status: "open" | "resolved"
+      exception_type:
+        | "document_missing"
+        | "vessel_delay"
+        | "port_sla_breach"
+        | "dispatch_risk"
+        | "customs_hold"
+        | "transit_update_missing"
+        | "transit_overdue"
+        | "delivery_discrepancy"
+        | "return_overdue"
+        | "other"
+      exception_update_kind:
+        | "opened"
+        | "note"
+        | "follow_up"
+        | "owner"
+        | "severity"
+        | "escalated"
+        | "resolved"
       finance_status:
         | "not_invoiced"
         | "invoiced"
@@ -1133,6 +1783,13 @@ export type Database = {
         | "container_returned"
         | "operationally_complete"
         | "closed"
+      sla_stage:
+        | "documents"
+        | "port_processing"
+        | "dispatch"
+        | "transit_update"
+        | "transit"
+        | "empty_return"
       transport_status:
         | "unassigned"
         | "assigned"
@@ -1280,6 +1937,7 @@ export const Constants = {
         "finance",
         "client",
       ],
+      assignment_status: ["active", "cancelled"],
       customs_status: [
         "not_started",
         "entry_in_preparation",
@@ -1320,7 +1978,43 @@ export const Constants = {
         "receipt",
         "other",
       ],
+      eta_reason_category: [
+        "vessel_delay",
+        "port_congestion",
+        "documents",
+        "customs",
+        "truck_availability",
+        "road_conditions",
+        "border_delay",
+        "weather",
+        "client_request",
+        "schedule_confirmed",
+        "other",
+      ],
       event_source: ["staff", "driver", "integration", "system"],
+      exception_severity: ["low", "medium", "high", "critical"],
+      exception_status: ["open", "resolved"],
+      exception_type: [
+        "document_missing",
+        "vessel_delay",
+        "port_sla_breach",
+        "dispatch_risk",
+        "customs_hold",
+        "transit_update_missing",
+        "transit_overdue",
+        "delivery_discrepancy",
+        "return_overdue",
+        "other",
+      ],
+      exception_update_kind: [
+        "opened",
+        "note",
+        "follow_up",
+        "owner",
+        "severity",
+        "escalated",
+        "resolved",
+      ],
       finance_status: [
         "not_invoiced",
         "invoiced",
@@ -1382,6 +2076,14 @@ export const Constants = {
         "container_returned",
         "operationally_complete",
         "closed",
+      ],
+      sla_stage: [
+        "documents",
+        "port_processing",
+        "dispatch",
+        "transit_update",
+        "transit",
+        "empty_return",
       ],
       transport_status: [
         "unassigned",

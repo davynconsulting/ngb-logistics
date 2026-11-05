@@ -12,6 +12,15 @@ import {
   canOverride, milestoneOptions,
 } from "@/lib/domain/milestones";
 import { RecordMilestoneForm } from "@/components/milestones/record-form";
+import { getEtaHistory, getShipmentExceptions, getTransport, listDrivers, listRoutes } from "@/lib/dal/operations";
+import { listActiveStaff } from "@/lib/dal/clients";
+import {
+  canAssignTransport, canManageExceptions, canReviseEta, etaEditable, transportCandidates,
+} from "@/lib/domain/operations";
+import { ROLE_LABELS } from "@/lib/auth/roles";
+import { EtaPanel } from "@/components/operations/eta-panel";
+import { TransportPanel } from "@/components/operations/transport-panel";
+import { ExceptionPanel } from "@/components/operations/exception-panel";
 import { MilestoneTimeline } from "@/components/milestones/timeline";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { SHIPMENT_STATUS_LABELS } from "@/lib/domain/status-labels";
@@ -53,7 +62,15 @@ async function ShipmentDetail({ params, searchParams }: PageProps<"/admin/shipme
   const user = await requireStaff();
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const [s, milestones] = await Promise.all([getShipment(id), getMilestones(id)]);
+  const canTransport = canAssignTransport(user.role);
+  const canExceptions = canManageExceptions(user.role);
+  const [s, milestones, etaHistory, transport, exceptions, routes, drivers, staff] = await Promise.all([
+    getShipment(id), getMilestones(id), getEtaHistory(id), getTransport(id),
+    user.role === "driver" ? Promise.resolve([]) : getShipmentExceptions(id),
+    canTransport ? listRoutes() : Promise.resolve([]),
+    canTransport ? listDrivers() : Promise.resolve([]),
+    canExceptions ? listActiveStaff() : Promise.resolve([]),
+  ]);
   if (!s) notFound(); // also when RLS hides it (e.g. not assigned to this agent)
   const tz = s.client?.timezone ?? "Africa/Kigali";
 
@@ -70,6 +87,12 @@ async function ShipmentDetail({ params, searchParams }: PageProps<"/admin/shipme
   const evidence = s.documents
     .filter((d) => !s.documents.some((x) => x.replaces_document_id === d.id))
     .map((d) => ({ id: d.id, label: `${DOCUMENT_TYPE_LABELS[d.document_type]} · ${d.file_name}` }));
+
+  const milestoneLabel = (t: string) => milestones.catalogue.find((c) => c.milestone_type === t)?.label ?? t;
+  const containerLabel = (cid: string) => containers.find((c) => c.id === cid)?.label ?? "Container";
+  const withTruck = new Set(transport.filter((a) => a.status === "active").flatMap((a) => a.containers.map((c) => c.container_id)));
+  const staffOptions = staff.filter((p) => p.role !== "driver")
+    .map((p) => ({ id: p.id, label: `${p.full_name || p.email} (${ROLE_LABELS[p.role]})` }));
 
   const facts: [string, React.ReactNode][] = [
     ["Client", s.client?.legal_name],
@@ -110,6 +133,21 @@ async function ShipmentDetail({ params, searchParams }: PageProps<"/admin/shipme
           </dl>
         </section>
 
+        <div className="grid gap-6 lg:grid-cols-2">
+          <EtaPanel shipmentId={s.id} current={s.current_eta} reason={s.eta_reason} updatedAt={s.eta_updated_at}
+            history={etaHistory} timeZone={tz} canEdit={canReviseEta(user.role) && etaEditable(s.overall_status)} />
+          <TransportPanel shipmentId={s.id} assignments={transport} containerLabel={containerLabel} timeZone={tz}
+            canAssign={canTransport}
+            form={canTransport ? {
+              shipmentId: s.id,
+              candidates: transportCandidates(s.containers, withTruck).map((c) => ({
+                id: c.id, label: c.container_number, status: SHIPMENT_STATUS_LABELS[c.operational_status], needsOverride: c.needsOverride })),
+              routes: routes.map((r) => ({ id: r.id, name: r.name })),
+              drivers: drivers.map((d) => ({ id: d.id, label: d.full_name || d.email || "Driver" })),
+              canOverride: canOverride(user.role),
+            } : null} />
+        </div>
+
         <section className="rounded-lg border bg-card p-4 sm:p-6">
           <h2 className="mb-3 text-lg font-medium">Containers ({s.containers.length})</h2>
           <ul className="divide-y">
@@ -149,6 +187,11 @@ async function ShipmentDetail({ params, searchParams }: PageProps<"/admin/shipme
             <MilestoneTimeline data={milestones} containers={containers} timeZone={tz} user={user} />
           </section>
         </div>
+
+        {user.role !== "driver" && (
+          <ExceptionPanel shipmentId={s.id} exceptions={exceptions} containers={containers} staff={staffOptions}
+            user={user} timeZone={tz} milestoneLabel={milestoneLabel} canManage={canExceptions} />
+        )}
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
           <section className="h-fit rounded-lg border bg-card p-4 sm:p-6">
