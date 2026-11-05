@@ -56,10 +56,16 @@ const FIELD_EVIDENCE_TYPES: DocumentType[] = [
   "proof_of_delivery", "container_return_receipt", "photo", "other",
 ];
 
+/** Commercial documents NGB asks clients for (migration 0015). Always visible to the client. */
+export const CLIENT_UPLOAD_TYPES: DocumentType[] = [
+  "bill_of_lading", "commercial_invoice", "packing_list", "certificate_of_origin", "other",
+];
+
 /** Document types a role may upload. The database policy is the real gate; this only shapes the UI. */
 export function uploadTypesFor(role: AppRole): DocumentType[] {
   if (role === "admin" || role === "ops_manager" || role === "doc_officer") return DOCUMENT_TYPES;
   if (role === "clearing_agent" || role === "driver") return FIELD_EVIDENCE_TYPES;
+  if (role === "client") return CLIENT_UPLOAD_TYPES;
   return [];
 }
 

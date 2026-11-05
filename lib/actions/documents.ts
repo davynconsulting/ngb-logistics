@@ -1,7 +1,7 @@
 "use server";
 
 import { refresh } from "next/cache";
-import { requireStaff } from "@/lib/dal/session";
+import { requireStaff, requireUser } from "@/lib/dal/session";
 import { createClient } from "@/lib/supabase/server";
 import {
   DOCUMENT_BUCKET, cleanFileName, documentStoragePath, uploadTypesFor, type DocumentType,
@@ -34,7 +34,7 @@ async function loadShipment(shipmentId: string) {
 }
 
 export async function prepareDocumentUpload(input: PrepareUploadInput): Promise<PrepareResult> {
-  const user = await requireStaff();
+  const user = await requireUser(); // staff, or a client uploading its commercial documents
   const parsed = prepareUploadSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the file and try again." };
   const v = parsed.data;
@@ -65,7 +65,7 @@ export async function prepareDocumentUpload(input: PrepareUploadInput): Promise<
 }
 
 export async function finalizeDocumentUpload(input: FinalizeUploadInput): Promise<FinalizeResult> {
-  await requireStaff();
+  const user = await requireUser();
   const parsed = finalizeUploadSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "The upload could not be saved. Please try again." };
   const v = parsed.data;
@@ -83,7 +83,7 @@ export async function finalizeDocumentUpload(input: FinalizeUploadInput): Promis
     p_file_name: cleanFileName(v.fileName),
     p_container_id: v.containerId,
     p_replaces_document_id: v.replacesId,
-    p_client_visible: v.clientVisible,
+    p_client_visible: user.role === "client" ? true : v.clientVisible, // a client's own upload is always visible to it
   });
   if (error) {
     if (error.code === "P0002") return { ok: false, error: "The upload didn't finish. Please try again." };

@@ -20,7 +20,7 @@ import { FormAlert } from "@/components/auth/form-alert";
  * prepare (server picks the path + signed token) → upload → record (server).
  */
 export function DocumentUploadForm({
-  shipmentId, types, containers, defaultType, replaces,
+  shipmentId, types, containers, defaultType, replaces, chooseVisibility = true,
 }: {
   shipmentId: string;
   types: DocumentType[];
@@ -28,6 +28,8 @@ export function DocumentUploadForm({
   defaultType?: DocumentType;
   /** Upload a new version of this document (type and container are kept). */
   replaces?: { id: string; type: DocumentType; containerId: string | null; clientVisible: boolean };
+  /** Staff choose whether the client sees it; a client's own uploads are always visible to it. */
+  chooseVisibility?: boolean;
 }) {
   const router = useRouter();
   const id = useId();
@@ -50,7 +52,7 @@ export function DocumentUploadForm({
     const documentType = replaces?.type ?? String(fd.get("document_type") ?? "");
     if (!documentType) return setError("Choose the document type.");
     const containerId = replaces ? (replaces.containerId ?? "") : String(fd.get("container_id") ?? "");
-    const clientVisible = fd.get("client_visible") === "on";
+    const clientVisible = chooseVisibility ? fd.get("client_visible") === "on" : true;
 
     setPending(true);
     try {
@@ -103,10 +105,12 @@ export function DocumentUploadForm({
             className="h-auto py-2 file:mr-3 file:rounded file:bg-secondary file:px-2 file:py-1" />
         </FormField>
       </div>
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" name="client_visible" defaultChecked={replaces?.clientVisible ?? true} className="size-4 accent-primary" />
-        Client can see this document
-      </label>
+      {chooseVisibility && (
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="client_visible" defaultChecked={replaces?.clientVisible ?? true} className="size-4 accent-primary" />
+          Client can see this document
+        </label>
+      )}
       <div>
         <Button type="submit" disabled={pending} className="w-full sm:w-auto">
           {pending ? <Loader2 className="animate-spin" aria-hidden /> : <Upload aria-hidden />}

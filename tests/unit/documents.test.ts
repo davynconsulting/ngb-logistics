@@ -42,12 +42,12 @@ describe("resolveMimeType", () => {
 });
 
 describe("roles", () => {
-  it("doc staff upload every type; field roles only evidence; others none", () => {
+  it("doc staff upload every type; field roles only evidence; clients commercial documents; finance none", () => {
     expect(uploadTypesFor("doc_officer")).toContain("bill_of_lading");
     expect(uploadTypesFor("clearing_agent")).toContain("customs_entry");
     expect(uploadTypesFor("driver")).not.toContain("bill_of_lading");
     expect(uploadTypesFor("finance")).toEqual([]);
-    expect(uploadTypesFor("client")).toEqual([]);
+    expect(uploadTypesFor("client")).toEqual(["bill_of_lading", "commercial_invoice", "packing_list", "certificate_of_origin", "other"]);
   });
   it("only admin, ops manager and doc officer review", () => {
     expect(canReviewDocuments("doc_officer")).toBe(true);

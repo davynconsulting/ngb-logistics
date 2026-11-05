@@ -86,10 +86,18 @@ Don't generate the whole app in one go. **Don't make destructive database change
   - Only known push-service hosts are accepted (`isAllowedPushEndpoint`).
   - iOS needs "Add to Home Screen" (16.4+) before push works; `PushToggle` explains this.
   - Security headers are set in `next.config.ts`. A full script CSP with nonces is planned for Sprint 5.
+- **Client portal:** pages are `/portal` (overview), `/portal/shipments`, `/portal/shipments/[reference]`, `/portal/notifications` and `/portal/settings`. Data comes from `lib/dal/portal.ts`.
+  - List columns explicitly (never `*`), because clients can read every column of their own shipment rows.
+  - A reference that doesn't exist and another client's reference give the same "not found".
+  - Clients upload only `CLIENT_UPLOAD_TYPES` through the same prepare/finalize actions. Their uploads are always client-visible, pending review, and notify the shipment's ops owner.
+  - Inbox texts come from the shared templates (`inboxEntry`). Opening a notification marks it read.
+  - WhatsApp consent is set through `saveWhatsApp`; the number must include the country code.
+  - Navigation is a bottom bar on phones (`PortalNav`). With Cache Components, `usePathname()` must stay inside `<Suspense>` and must not be used in the Suspense fallback.
+- **ETA reason (0019):** `shipments.eta_reason` is client-readable. A revision hidden from the client sets it to "Schedule updated"; the real reason stays in `eta_revisions`.
 - **Client reads (0015):** clients can't read `milestone_events` or `transport_assignments` directly, because they carry internal reasons. Use `client_timeline()`, `client_transport()` and `client_shipment_alerts()`.
   - Driver contact is shown only if `organizations.show_driver_contact` AND `driver_contacts.share_with_client`.
 - Forms that submit manually (keeping values on a refusal, converting local times to ISO) use `components/forms/use-form-action.ts`. Don't call `Date.now()` while rendering (lint purity rule): compute time-based flags in the DAL.
-- **Testing server actions over HTTP:** POST to the page with a `Next-Action: <id>` header. Get the ID from `.next/server/server-reference-manifest.json`. Encode the arguments with React's `encodeReply` from `next/dist/compiled/react-server-dom-turbopack/client.node.js`. Field order matters when an action takes a FormData, so don't hand-build the encoding.
+- **Testing server actions over HTTP:** POST to the page with a `Next-Action: <id>` header. Get the ID from `.next/server/server-reference-manifest.json`. Encode the arguments with React's `encodeReply` from `next/dist/compiled/react-server-dom-turbopack/client.node.js`. Field order matters when an action takes a FormData, so don't hand-build the encoding. POST to a page that actually uses the action (e.g. `/portal/shipments/<ref>` for document uploads). Other pages answer HTTP 200 with `{}` and the action never runs.
 - **Rendered HTML contains `<!-- -->`** between adjacent text nodes (e.g. `Earlier versions (<!-- -->1<!-- -->)`). Strip these before matching text in tests.
 - **Forms** use shadcn's `field` component with react-hook-form + zod, not the older `form` component.
 

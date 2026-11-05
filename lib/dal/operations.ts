@@ -23,7 +23,7 @@ export async function getTransport(shipmentId: string) {
     .select(`id, transporter_name, truck_registration, trailer_registration, border_crossing, planned_loading_at,
       actual_loading_at, transit_document_refs, status, assigned_at, cancel_reason, cancelled_at,
       route:routes(code, name, transit_estimate_hours),
-      driver:driver_contacts(driver_name, driver_phone),
+      driver:driver_contacts(driver_name, driver_phone, share_with_client),
       containers:transport_assignment_containers(container_id)`)
     .eq("shipment_id", shipmentId).order("assigned_at", { ascending: false });
   if (error) throw new Error("Could not load transport");
@@ -53,7 +53,7 @@ function withDue<T extends { next_follow_up_at: string | null; status: string }>
   return rows.map((r) => ({ ...r, follow_up_due: r.status === "open" && !!r.next_follow_up_at && new Date(r.next_follow_up_at).getTime() < now }));
 }
 
-const EXCEPTION_FIELDS = `id, shipment_id, container_id, exception_type, severity, status, title, details, client_message,
+const EXCEPTION_FIELDS = `id, shipment_id, container_id, exception_type, severity, status, title, details, client_message, client_visible,
   owner_id, source, next_action, next_follow_up_at, opened_at, escalated_at, resolved_at, resolution, sla_stage,
   owner:profiles!exceptions_owner_id_fkey(full_name, email),
   container:containers(container_number),

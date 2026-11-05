@@ -32,10 +32,11 @@ check("signed-in user opening /login → home", r3.status === 307 && r3.headers.
 const r4 = await get("/portal", aline);
 check("protected pages are private, no-store", (r4.headers.get("cache-control") ?? "").includes("no-store"));
 
-const html = await pageText(r4);
+// /portal is the Overview (active shipments only); the full list is /portal/shipments?view=all (newest first, 200 max).
+const html = (await pageText(r4)) + (await pageText(await get("/portal/shipments?view=all", aline)));
 const { data: orgs } = await svc.from("organizations").select("id, client_code").in("client_code", ["AKAGERA", "KIVU"]);
 const id = (c) => orgs.find((o) => o.client_code === c).id;
-const { data: own } = await svc.from("shipments").select("shipment_reference").eq("client_id", id("AKAGERA")).limit(3);
+const { data: own } = await svc.from("shipments").select("shipment_reference").eq("client_id", id("AKAGERA")).order("created_at", { ascending: false }).limit(3);
 const { data: theirs } = await svc.from("shipments").select("shipment_reference").eq("client_id", id("KIVU"));
 check("portal lists the client's own shipments", own.every((s) => html.includes(s.shipment_reference)));
 check("portal shows none of another client's shipments (AC-05)", theirs.every((s) => !html.includes(s.shipment_reference)), `${theirs.length} Kivu refs checked`);

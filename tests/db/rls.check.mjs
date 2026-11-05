@@ -520,7 +520,9 @@ e4?.rows[0]?.material === true ? ok("3 h change is material when delivery is due
 const e5 = await expectOk("same-day ETA +1 h", transport, RE, [sA.id, ahead(14), "border_delay", "Still queueing", false]);
 e5?.rows[0]?.material === false ? ok("1 h same-day change is not material") : bad("same-day small", JSON.stringify(e5?.rows));
 const eta = await etaOf(sA.id);
-Math.abs(new Date(eta.current_eta) - new Date(ahead(14))) < 5000 && eta.eta_reason === "Still queueing" ? ok("shipment shows the current ETA and its reason") : bad("eta", JSON.stringify(eta));
+Math.abs(new Date(eta.current_eta) - new Date(ahead(14))) < 5000 && eta.eta_reason === "Schedule updated" ? ok("shipment shows the current ETA; a staff-only reason stays off the client-readable row (0019)") : bad("eta", JSON.stringify(eta));
+await expectRows("client cannot read the hidden reason anywhere", cA, "select 1 from shipments where id = $1 and eta_reason = 'Still queueing' union all select 1 from eta_revisions where reason = 'Still queueing'", 0, [sA.id]);
+await expectRows("staff still see the real reason in the history", ops, "select 1 from eta_revisions where shipment_id = $1 and reason = 'Still queueing'", 1, [sA.id]);
 await expectRows("previous ETAs stay auditable (5 revisions)", ops, "select 1 from eta_revisions where shipment_id = $1", 5, [sA.id]);
 await expectRows("client sees client-visible revisions only", cA, "select 1 from eta_revisions where shipment_id = $1", 4, [sA.id]);
 await expectRows("other client sees none", cB, "select 1 from eta_revisions", 0);

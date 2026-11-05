@@ -162,8 +162,8 @@ const direct2 = await aline.api.storage.from(BUCKET).createSignedUploadUrl(`${sh
 check("client can get an upload token for its own shipment (0015: commercial documents)", !direct2.error, direct2.error?.message?.slice(0, 60));
 const direct3 = await aline.api.storage.from(BUCKET).upload(`${crypto.randomUUID()}/${ship.id}/${crypto.randomUUID()}/x.pdf`, pdf("x"), { contentType: "application/pdf" });
 check("client cannot upload into another organization's folder", !!direct3.error, direct3.error?.message?.slice(0, 40));
-const clientAct = await action(aline, "prepareDocumentUpload", [{ ...base, size: 10 }], page);
-check("client calling the upload action is turned away", clientAct.value?.ok !== true, clientAct.status);
+const clientAct = await action(aline, "prepareDocumentUpload", [{ ...base, documentType: "customs_entry", size: 10 }], `/portal/shipments/${ship.shipment_reference}`);
+check("client cannot upload a staff document type (customs entry)", clientAct.value?.ok === false, JSON.stringify(clientAct.value));
 const finAct = (await action(finance, "prepareDocumentUpload", [{ ...base, size: 10 }], page)).value;
 check("finance cannot upload", finAct?.ok === false, finAct?.error);
 const ow = await anonStorage().uploadToSignedUrl(u1.prep.path, u1.prep.token, pdf("overwrite attempt"), { contentType: "application/pdf" });

@@ -140,3 +140,27 @@ export async function runSlaCheck(): Promise<void> {
   const r = data?.[0];
   redirect(`/admin/exceptions?scan=${r?.opened ?? 0}-${r?.escalated ?? 0}-${r?.cleared ?? 0}`);
 }
+
+/** Publish (or hide) the message a client sees for an exception. Owner or lead; logged by the database. */
+export async function setExceptionClientMessage(exceptionId: string, _prev: OpsState, fd: FormData): Promise<OpsState> {
+  await requireStaff(...EXCEPTION_ROLES);
+  const visible = fd.get("client_visible") === "on";
+  const message = (text(fd, "client_message") ?? "").trim();
+  if (visible && message.length < 5) return { fieldErrors: { client_message: ["Write the message the client will see"] } };
+  if (message.length > 500) return { fieldErrors: { client_message: ["Keep it under 500 characters"] } };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("set_exception_client_message", {
+    p_exception_id: exceptionId, p_message: message, p_visible: visible,
+  });
+  if (error) return { error: dbError(error, "The message could not be saved. Please try again.") };
+  refresh();
+  return { ok: true, message: visible ? "The client can see this message and has been notified." : "Hidden from the client." };
+}
+
+/** Record whether the driver agreed to share their contact with the client (needs the client's policy too). */
+export async function setDriverSharing(assignmentId: string, share: boolean): Promise<void> {
+  await requireStaff("admin", "ops_manager", "transport_coord");
+  const supabase = await createClient();
+  await supabase.from("driver_contacts").update({ share_with_client: share }).eq("assignment_id", assignmentId);
+  refresh();
+}

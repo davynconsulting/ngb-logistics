@@ -5,6 +5,7 @@ import type { AppRole } from "@/lib/auth/roles";
 import { ExceptionSummary } from "@/components/operations/exception-card";
 import { ExceptionActions } from "@/components/operations/exception-actions";
 import { OpenExceptionForm } from "@/components/operations/open-exception-form";
+import { ClientMessageForm } from "@/components/operations/client-message-form";
 
 /** Exceptions on one shipment: open ones first, with their follow-up log (FRS §8). */
 export function ExceptionPanel({
@@ -44,6 +45,9 @@ export function ExceptionPanel({
                   ))}
                 </ol>
               </details>
+            )}
+            {x.status === "open" && canManage && (lead || x.owner_id === user.id) && (
+              <ClientMessageForm exceptionId={x.id} message={x.client_message} visible={x.client_visible} />
             )}
             {x.status === "open" && canManage && (
               <ExceptionActions exceptionId={x.id} staff={staff} canLead={lead || x.owner_id === user.id} canEscalate={!x.escalated_at} />

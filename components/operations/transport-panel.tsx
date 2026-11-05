@@ -3,6 +3,8 @@ import type { TransportAssignment } from "@/lib/dal/operations";
 import { Badge } from "@/components/ui/badge";
 import { AssignTruckForm } from "@/components/operations/assign-truck-form";
 import { CancelTruck } from "@/components/operations/cancel-truck";
+import { setDriverSharing } from "@/lib/actions/operations";
+import { Button } from "@/components/ui/button";
 
 /** Truck assignments (FRS §6.5) and the assign form. Driver contact is staff-only (RLS). */
 export function TransportPanel({
@@ -42,6 +44,18 @@ export function TransportPanel({
               <div><dt className="inline">Assigned: </dt><dd className="inline">{formatDateTime(a.assigned_at, timeZone)}</dd></div>
             </dl>
             {a.status === "cancelled" && a.cancel_reason && <p className="text-xs text-destructive">Cancelled {formatDateTime(a.cancelled_at, timeZone)}: {a.cancel_reason}</p>}
+            {a.status === "active" && canAssign && a.driver && (
+              <form action={setDriverSharing.bind(null, a.id, !a.driver.share_with_client)} className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-muted-foreground">
+                  {a.driver.share_with_client
+                    ? "Driver agreed to share their contact with the client (shown only if the client's policy allows it)."
+                    : "Driver contact is not shared with the client."}
+                </span>
+                <Button type="submit" size="sm" variant="ghost">
+                  {a.driver.share_with_client ? "Stop sharing" : "Driver agreed to share"}
+                </Button>
+              </form>
+            )}
             {a.status === "active" && canAssign && <CancelTruck assignmentId={a.id} />}
           </li>
         ))}

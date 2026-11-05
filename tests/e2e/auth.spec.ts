@@ -12,7 +12,7 @@ test("wrong password shows a generic error", async ({ page }) => {
 test("client lands on the portal and cannot open the admin area", async ({ page }) => {
   await signIn(page, "aline@akagera.example");
   await expect(page).toHaveURL(/\/portal$/);
-  await expect(page.getByRole("heading", { name: "My shipments" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await expectNoHorizontalScroll(page);
 
   await page.goto("/admin/shipments");

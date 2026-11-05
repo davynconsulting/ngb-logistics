@@ -134,7 +134,7 @@ async function ShipmentDetail({ params, searchParams }: PageProps<"/admin/shipme
         </section>
 
         <div className="grid gap-6 lg:grid-cols-2">
-          <EtaPanel shipmentId={s.id} current={s.current_eta} reason={s.eta_reason} updatedAt={s.eta_updated_at}
+          <EtaPanel shipmentId={s.id} current={s.current_eta} reason={etaHistory[0]?.reason ?? s.eta_reason} updatedAt={s.eta_updated_at}
             history={etaHistory} timeZone={tz} canEdit={canReviseEta(user.role) && etaEditable(s.overall_status)} />
           <TransportPanel shipmentId={s.id} assignments={transport} containerLabel={containerLabel} timeZone={tz}
             canAssign={canTransport}

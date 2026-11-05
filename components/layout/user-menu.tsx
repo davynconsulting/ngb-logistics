@@ -17,7 +17,7 @@ export async function UserMenu() {
           {user.isStaff ? ROLE_LABELS[user.role] : user.organizationName}
         </p>
       </div>
-      <Button asChild variant="ghost" size="icon-sm" aria-label="Settings">
+      <Button asChild variant="ghost" size="icon-sm" aria-label="Settings" className="text-primary-foreground hover:bg-white/10 hover:text-primary-foreground">
         <Link href={user.isStaff ? "/admin/account" : "/portal/settings"}><Settings aria-hidden /></Link>
       </Button>
       <SignOutButton />
