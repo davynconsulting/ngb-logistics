@@ -4,11 +4,18 @@ import { computeCheckDigit } from "../../lib/domain/container-number";
 /** Password of the seeded, fictional test users (dev project only). */
 export const PASSWORD = process.env.E2E_PASSWORD ?? process.env.SEED_USER_PASSWORD ?? "";
 
-export async function signIn(page: Page, email: string, password = PASSWORD) {
+/** Fill in and submit the login form (does not wait for the result). */
+export async function submitLogin(page: Page, email: string, password = PASSWORD) {
   await page.goto("/login");
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
+}
+
+/** Sign in and wait until the app has left the login page (session cookie set). */
+export async function signIn(page: Page, email: string, password = PASSWORD) {
+  await submitLogin(page, email, password);
+  await page.waitForURL((url) => !url.pathname.startsWith("/login"));
 }
 
 export async function expectNoHorizontalScroll(page: Page) {

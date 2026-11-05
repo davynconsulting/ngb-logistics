@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { PASSWORD, expectNoHorizontalScroll, signIn } from "./helpers";
+import { PASSWORD, expectNoHorizontalScroll, signIn, submitLogin } from "./helpers";
 
 test.skip(!PASSWORD, "Set E2E_PASSWORD (the seeded test users' password)");
 
 test("wrong password shows a generic error", async ({ page }) => {
-  await signIn(page, "admin@ngb.example", "not-the-password-123");
+  await submitLogin(page, "admin@ngb.example", "not-the-password-123");
   await expect(page.getByText("Incorrect email or password.")).toBeVisible();
   await expect(page).toHaveURL(/\/login/);
 });
