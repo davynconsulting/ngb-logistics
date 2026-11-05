@@ -687,6 +687,44 @@ export type Database = {
           },
         ]
       }
+      invoice_reminders: {
+        Row: {
+          balance_due: number
+          currency: string
+          days_from_due: number
+          id: string
+          invoice_id: string
+          sent_at: string
+          stage: number
+        }
+        Insert: {
+          balance_due: number
+          currency: string
+          days_from_due: number
+          id?: string
+          invoice_id: string
+          sent_at?: string
+          stage: number
+        }
+        Update: {
+          balance_due?: number
+          currency?: string
+          days_from_due?: number
+          id?: string
+          invoice_id?: string
+          sent_at?: string
+          stage?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_reminders_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoices: {
         Row: {
           amount_credited: number
@@ -1301,6 +1339,7 @@ export type Database = {
           is_active: boolean
           is_internal: boolean
           legal_name: string
+          payment_reminders: boolean
           phone_e164: string | null
           preferred_language: string
           primary_contact_name: string | null
@@ -1322,6 +1361,7 @@ export type Database = {
           is_active?: boolean
           is_internal?: boolean
           legal_name: string
+          payment_reminders?: boolean
           phone_e164?: string | null
           preferred_language?: string
           primary_contact_name?: string | null
@@ -1343,6 +1383,7 @@ export type Database = {
           is_active?: boolean
           is_internal?: boolean
           legal_name?: string
+          payment_reminders?: boolean
           phone_e164?: string | null
           preferred_language?: string
           primary_contact_name?: string | null
@@ -2428,6 +2469,13 @@ export type Database = {
           material: boolean
           minutes_changed: number
           revision_id: string
+        }[]
+      }
+      run_finance_reminders: {
+        Args: never
+        Returns: {
+          overdue: number
+          reminders: number
         }[]
       }
       run_sla_scan: {

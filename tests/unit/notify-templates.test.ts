@@ -64,6 +64,27 @@ describe("notification templates", () => {
     expect(renderNotification({ template_key: "payment.verified", payload: { ...base, balance_due: "0.00" } }).body).toContain("paid in full");
   });
 
+  it("payment reminders: due soon, due today, overdue", () => {
+    const base = { ...sample, invoice_number: "INV-2026-00007", currency: "USD", balance_due: "1878.49", due_date: "2026-12-05" };
+    const at = (days_from_due: number) => renderNotification({ template_key: "invoice.reminder", payload: { ...base, days_from_due } });
+    expect(at(-3).title).toBe("INV-2026-00007: payment due soon");
+    expect(at(-3).body).toBe("1,878.49 USD is due 5 Dec 2026 (in 3 days).");
+    expect(at(0).body).toBe("1,878.49 USD is due today.");
+    expect(at(7).title).toBe("INV-2026-00007: payment overdue");
+    expect(at(1).body).toBe("1,878.49 USD was due 5 Dec 2026 (1 day ago). Please pay or contact NGB finance if you have a question.");
+    expect(at(7).url).toBe("/portal/invoices/INV-2026-00007");
+  });
+
+  it("finance alerts link to the admin invoice", () => {
+    const p = { ...sample, invoice_number: "INV-2026-00007", invoice_id: sample.exception_id, client_name: "Akagera Traders (fictional)",
+      currency: "RWF", balance_due: "118000.00", due_date: "2026-11-01", reason: "Client queries the rate" };
+    const o = renderNotification({ template_key: "staff.invoice_overdue", payload: p });
+    expect(o.title).toBe("Overdue: INV-2026-00007");
+    expect(o.body).toBe("Akagera Traders (fictional) · balance 118,000.00 RWF · due 1 Nov 2026");
+    expect(o.url).toBe(`/admin/finance/invoices/${sample.exception_id}`);
+    expect(renderNotification({ template_key: "staff.invoice_disputed", payload: p }).body).toContain("Client queries the rate");
+  });
+
   it("money and calendar-day text without floats or time-zone shifts", () => {
     expect(formatMoneyText("1234567.5", "KES")).toBe("1,234,567.50 KES");
     expect(formatMoneyText("0.10", "USD")).toBe("0.10 USD");

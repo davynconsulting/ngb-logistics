@@ -54,14 +54,15 @@ export async function getInvoice(id: string) {
     .select(`id, invoice_number, status, currency, issue_date, due_date, subtotal, tax_total, total, amount_paid,
       amount_credited, balance_due, client_note, payment_instructions, disputed_at, dispute_reason, voided_at,
       void_reason, issued_at, created_at, client_id, shipment_id,
-      client:organizations!invoices_client_id_fkey(legal_name, client_code, billing_address, tax_id, timezone, billing_terms_days),
+      client:organizations!invoices_client_id_fkey(legal_name, client_code, billing_address, tax_id, timezone, billing_terms_days, payment_reminders),
       shipment:shipments!invoices_shipment_id_fkey(id, shipment_reference, bl_number, overall_status),
       issuer:profiles!invoices_issued_by_fkey(full_name),
       lines:invoice_lines(id, line_no, description, quantity, unit_price, tax_rate, amount, tax_amount),
       payments(id, amount, currency, paid_at, method, transaction_reference, note, recorded_at,
         recorder:profiles!payments_recorded_by_fkey(full_name),
         review:payment_reviews(decision, receipt_number, reason, reviewed_at, reviewer:profiles!payment_reviews_reviewed_by_fkey(full_name))),
-      credit_notes(id, credit_note_number, amount, reason, created_at, creator:profiles!credit_notes_created_by_fkey(full_name))`)
+      credit_notes(id, credit_note_number, amount, reason, created_at, creator:profiles!credit_notes_created_by_fkey(full_name)),
+      reminders:invoice_reminders(id, stage, days_from_due, balance_due, sent_at)`)
     .eq("id", id).maybeSingle();
   if (error) throw new Error("Could not load the invoice");
   if (!data) return null;
@@ -78,6 +79,7 @@ export async function getInvoice(id: string) {
       ...p, amount: money(p.amount), recorder: one(p.recorder),
       review: (() => { const r = one(p.review); return r ? { ...r, reviewer: one(r.reviewer) } : null; })(),
     })),
+    reminders: [...data.reminders].sort((a, b) => a.sent_at.localeCompare(b.sent_at)).map((r) => ({ ...r, balance_due: money(r.balance_due) })),
     credit_notes: [...data.credit_notes].sort((a, b) => b.created_at.localeCompare(a.created_at))
       .map((c) => ({ ...c, amount: money(c.amount), creator: one(c.creator) })),
   };

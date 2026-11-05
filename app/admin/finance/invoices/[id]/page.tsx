@@ -181,6 +181,24 @@ async function Invoice({ params, searchParams }: PageProps<"/admin/finance/invoi
           </Section>
         )}
 
+        {inv.status !== "draft" && (
+          <Section title="Payment reminders">
+            {inv.client?.payment_reminders === false && <p className="mb-2 text-sm text-muted-foreground">Reminders are turned off for this client.</p>}
+            {inv.disputed_at && <p className="mb-2 text-sm text-muted-foreground">Paused while the invoice is disputed.</p>}
+            {inv.reminders.length === 0 ? <p className="text-sm text-muted-foreground">None sent yet.</p> : (
+              <ul className="flex flex-col gap-1 text-sm">
+                {inv.reminders.map((r) => (
+                  <li key={r.id} className="flex flex-wrap justify-between gap-2">
+                    <span>{r.days_from_due < 0 ? `Due in ${-r.days_from_due} day${r.days_from_due === -1 ? "" : "s"}` : r.days_from_due === 0 ? "Due today" : `${r.days_from_due} day${r.days_from_due === 1 ? "" : "s"} overdue`}
+                      <span className="text-muted-foreground"> · balance {formatAmount(r.balance_due, inv.currency)}</span></span>
+                    <span className="text-xs text-muted-foreground">{formatDateTime(r.sent_at, tz)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Section>
+        )}
+
         {open && canManageDisputes(user.role) && (
           <Section title={inv.disputed_at ? "Resolve the dispute" : "Dispute"}>
             <ReasonForm kind="dispute" invoiceId={inv.id} open={!inv.disputed_at} />

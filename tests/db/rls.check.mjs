@@ -1120,6 +1120,91 @@ await expectRows("client B was not told about client A's invoice; no staff got c
 await expectRows("drafts and void drafts notify nobody", null, "select 1 from notifications where event_key = $1", 0, [`invoice:${r3}:issued`]);
 await expectRows("client B notified of its own invoice", null, "select 1 from notifications where event_key = $1 and recipient_id = $2", 1, [`invoice:${d2}:issued`, cB]);
 
+console.log("\nPayment reminders and overdue refresh (0023, AC-13):");
+{
+const tzB = (await db.query("select timezone from organizations where id = $1", [B])).rows[0].timezone;
+const todayB = (await db.query("select ((now() at time zone $1)::date)::text d", [tzB])).rows[0].d;
+const dB = (n) => new Date(Date.parse(todayB + "T12:00:00Z") + n * 864e5).toISOString().slice(0, 10);
+const mk = async (label, issueOff, dueOff, amount = "1000.00") => {
+  const id = (await expectOk(`${label}: draft`, finance, SD, [null, sB.id, "RWF", lines(["Storage (fictional)", "1", amount, "0"]), null, null]))?.rows[0]?.id;
+  await expectOk(`…issued ${issueOff}d, due ${dueOff}d`, finance, IS, [id, dB(issueOff), dB(dueOff)]);
+  return id;
+};
+const daily = async () => (await db.query("select * from private.finance_daily()")).rows[0];
+const sent = async (id) => (await db.query("select stage, days_from_due from invoice_reminders where invoice_id = $1 order by stage", [id])).rows;
+const reminderNote = async (id, stage) => (await db.query("select recipient_id, payload from notifications where event_key = $1", [`reminder:${id}:${stage}`])).rows;
+
+(await db.query("select private.reminder_stages()::text s")).rows[0].s === "{-3,0,7,14,30}" ? ok("default stages -3, 0, +7, +14, +30") : bad("stages", "");
+await db.query("update app_settings set value = '[5, \"x\", 1.5, -3, 900]' where key = 'finance.reminder_stages'");
+(await db.query("select private.reminder_stages()::text s")).rows[0].s === "{-3,5}" ? ok("stage setting: invalid entries ignored") : bad("stages filter", (await db.query("select private.reminder_stages()::text s")).rows[0].s);
+await db.query("update app_settings set value = '\"junk\"' where key = 'finance.reminder_stages'");
+(await db.query("select private.reminder_stages()::text s")).rows[0].s === "{-3,0,7,14,30}" ? ok("…a broken setting falls back to the defaults") : bad("stages fallback", "");
+await db.query("update app_settings set value = '[-3, 0, 7, 14, 30]' where key = 'finance.reminder_stages'");
+
+await expectRows("finance is alerted when an invoice becomes overdue (once)", null,
+  "select 1 from notifications where event_key = $1 and template_key = 'staff.invoice_overdue' and recipient_id = $2", 1, [`invoice:${d2}:overdue`, finance]);
+await expectRows("finance is alerted when a dispute is opened", null,
+  "select 1 from notifications where event_key like $1 and template_key = 'staff.invoice_disputed' and recipient_id = $2 and payload ->> 'reason' like 'Client says%'", 1, [`invoice:${d1}:dispute:%`, finance]);
+await expectRows("…clients get no staff alerts", null,
+  "select 1 from notifications n join profiles p on p.id = n.recipient_id where n.template_key like 'staff.invoice_%' and p.role = 'client'", 0);
+
+const eSoon = await mk("due in 3 days", -5, 3);
+const eToday = await mk("due today", -10, 0);
+const eNew = await mk("issued today, due in 2 days", 0, 2);
+const eDisp = await mk("16 days overdue but disputed", -20, -16);
+await expectOk("…dispute opened", ops, DS, [eDisp, true, "Client queries the rate"]);
+const ePend = await mk("8 days overdue, payment awaiting verification covers it", -9, -8);
+await expectOk("…full payment recorded (not yet verified)", finance, RP, [ePend, "1000.00", "RWF", nowIso, "mobile_money", "MM-PEND-1", null]);
+
+await expectError("doc officer cannot run reminders", doc, "select * from run_finance_reminders()", /Only finance/);
+await expectError("…nor clients", cB, "select * from run_finance_reminders()", /Only finance/);
+const r1 = (await expectOk("finance runs the reminders now", finance, "select * from run_finance_reminders()"))?.rows[0];
+r1?.reminders >= 3 ? ok(`reminders sent: ${r1.reminders}`) : bad("run", JSON.stringify(r1));
+JSON.stringify(await sent(d2)) === JSON.stringify([{ stage: 7, days_from_due: 10 }]) ? ok("10 days overdue → only the +7 stage (no burst of -3 and 0)") : bad("d2 stage", JSON.stringify(await sent(d2)));
+(await sent(eSoon))[0]?.stage === -3 ? ok("due in 3 days → the -3 stage") : bad("soon", JSON.stringify(await sent(eSoon)));
+(await sent(eToday))[0]?.stage === 0 ? ok("due today → the 0 stage") : bad("today", JSON.stringify(await sent(eToday)));
+(await sent(eNew)).length === 0 ? ok("no reminder on the day the invoice was issued") : bad("issue day", JSON.stringify(await sent(eNew)));
+(await sent(eDisp)).length === 0 ? ok("never while disputed") : bad("disputed", JSON.stringify(await sent(eDisp)));
+(await sent(ePend)).length === 0 ? ok("not when payments awaiting verification cover the balance") : bad("pending", JSON.stringify(await sent(ePend)));
+(await sent(d1)).length === 0 ? ok("paid invoices get none") : bad("paid", JSON.stringify(await sent(d1)));
+const n7 = await reminderNote(d2, 7);
+n7.length === 1 && n7[0].recipient_id === cB && n7[0].payload.days_from_due === 10 && n7[0].payload.balance_due === "118000.00"
+  ? ok("client B notified: stage, days overdue and balance as exact text") : bad("reminder note", JSON.stringify(n7));
+
+const again = await daily();
+again.reminders === 0 && (await sent(d2)).length === 1 ? ok("a second run sends nothing again (once per stage, AC-13)") : bad("again", JSON.stringify(again));
+await expectOk("dispute resolved", finance, DS, [eDisp, false, "Rate confirmed"]);
+await daily();
+JSON.stringify((await sent(eDisp)).map((r) => r.stage)) === "[14]" ? ok("after the dispute: only the latest stage (+14), not the missed ones") : bad("after dispute", JSON.stringify(await sent(eDisp)));
+
+await db.query("update organizations set payment_reminders = false where id = $1", [B]);
+const eOff = await mk("client with reminders turned off, due yesterday", -5, -1);
+await daily();
+(await sent(eOff)).length === 0 ? ok("no reminders for a client with reminders turned off") : bad("off", JSON.stringify(await sent(eOff)));
+await db.query("update organizations set payment_reminders = true where id = $1", [B]);
+await daily();
+(await sent(eOff))[0]?.stage === 0 ? ok("…turned back on: the stage reached is sent") : bad("on", JSON.stringify(await sent(eOff)));
+
+const eLate = await mk("issued, due in 5 days", -3, 5);
+(await inv(eLate)).status === "issued" ? ok("…status issued") : bad("late", (await inv(eLate)).status);
+// time passes: move the due date into the past as the database owner (the freeze trigger blocks everyone else)
+await db.query("alter table invoices disable trigger invoices_freeze");
+await db.query("update invoices set due_date = $2::date where id = $1", [eLate, dB(-1)]);
+await db.query("alter table invoices enable trigger invoices_freeze");
+const r2 = await daily();
+(await inv(eLate)).status === "overdue" && r2.overdue >= 1 ? ok("the daily run moves an invoice past its due date to overdue") : bad("refresh", JSON.stringify([r2, (await inv(eLate)).status]));
+await expectRows("…and finance is alerted", null, "select 1 from notifications where event_key = $1", 1, [`invoice:${eLate}:overdue`]);
+
+await expectRows("clients cannot read the reminder log", cB, "select 1 from invoice_reminders", 0);
+await expectRows("…nor the doc officer", doc, "select 1 from invoice_reminders", 0);
+await expectRows("finance reads it", finance, "select 1 from invoice_reminders where invoice_id = $1", 1, [d2]);
+await expectError("nobody writes it directly", finance, "insert into invoice_reminders (invoice_id, stage, days_from_due, balance_due, currency) values ($1, 30, 30, 1, 'RWF')", /permission denied/, [d2]);
+await expectError("the reminder log is append-only", null, "delete from invoice_reminders where invoice_id = $1", /append-only/, [d2]);
+await expectError("…and unique per invoice and stage", null, "insert into invoice_reminders (invoice_id, stage, days_from_due, balance_due, currency) values ($1, 7, 10, 1, 'RWF')", /duplicate key/, [d2]);
+await expectRows("clients cannot change their own reminder setting (RLS: no row updated)", cB, "update organizations set payment_reminders = false where id = $1 returning 1", 0, [B]);
+(await db.query("select payment_reminders from organizations where id = $1", [B])).rows[0].payment_reminders === true ? ok("…still on") : bad("client toggled", "");
+}
+
 }
 
 console.log("\nSecurity invariants (all migrations):");

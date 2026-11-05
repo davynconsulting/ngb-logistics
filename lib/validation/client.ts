@@ -31,6 +31,7 @@ export const clientSchema = z
     credit_currency: z.preprocess((v) => (v === "" ? undefined : v), z.enum(CURRENCIES).optional()),
     account_manager_id: optionalUuid,
     show_driver_contact: checkbox,
+    payment_reminders: checkbox,
     is_active: checkbox.optional(),
   })
   .refine((v) => !v.credit_limit || v.credit_currency, {

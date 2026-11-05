@@ -19,7 +19,7 @@ export type ClientFormDefaults = {
   client_code?: string; legal_name?: string; primary_contact_name?: string | null; phone_e164?: string | null;
   email?: string | null; billing_address?: string | null; tax_id?: string | null; preferred_language?: string;
   timezone?: string; billing_terms_days?: number | null; credit_limit?: number | string | null;
-  credit_currency?: string | null; account_manager_id?: string | null; show_driver_contact?: boolean; is_active?: boolean;
+  credit_currency?: string | null; account_manager_id?: string | null; show_driver_contact?: boolean; payment_reminders?: boolean; is_active?: boolean;
 };
 
 type Staff = { id: string; full_name: string; email: string | null; role: AppRole };
@@ -42,8 +42,8 @@ export function ClientForm({
     return d === null || d === undefined ? "" : String(d);
   };
   const err = (k: string) => state?.fieldErrors?.[k];
-  const checked = (k: "show_driver_contact" | "is_active") =>
-    state?.values && !state.ok ? state.values[k] === "on" : !!defaults[k];
+  const checked = (k: "show_driver_contact" | "payment_reminders" | "is_active") =>
+    state?.values && !state.ok ? state.values[k] === "on" : (defaults[k] ?? k === "payment_reminders"); // reminders on by default
   const key = state?.ok ? "saved" : JSON.stringify(state?.values ?? {});
 
   return (
@@ -131,6 +131,10 @@ export function ClientForm({
           <label className="mt-2 flex items-start gap-2 text-sm">
             <input type="checkbox" name="show_driver_contact" defaultChecked={checked("show_driver_contact")} className="mt-0.5 size-4 accent-primary" />
             <span>Show driver name and phone to this client <span className="text-muted-foreground">(only with company policy and driver consent)</span></span>
+          </label>
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" name="payment_reminders" defaultChecked={checked("payment_reminders")} className="mt-0.5 size-4 accent-primary" />
+            <span>Send payment reminders <span className="text-muted-foreground">(3 days before, on and after the due date; never while an invoice is disputed)</span></span>
           </label>
           {mode === "edit" && (
             <label className="flex items-start gap-2 text-sm">

@@ -10,7 +10,7 @@ import { fieldErrors, type ActionState } from "@/lib/validation/common";
 const FIELDS = [
   "client_code", "legal_name", "primary_contact_name", "phone_e164", "email", "billing_address", "tax_id",
   "preferred_language", "timezone", "billing_terms_days", "credit_limit", "credit_currency",
-  "account_manager_id", "show_driver_contact", "is_active",
+  "account_manager_id", "show_driver_contact", "payment_reminders", "is_active",
 ] as const;
 
 /**
@@ -42,6 +42,7 @@ export async function saveClient(id: string | null, _prev: ActionState, formData
     credit_currency: v.credit_currency ?? null,
     account_manager_id: v.account_manager_id ?? null,
     show_driver_contact: v.show_driver_contact,
+    payment_reminders: v.payment_reminders,
   };
 
   const supabase = await createClient();

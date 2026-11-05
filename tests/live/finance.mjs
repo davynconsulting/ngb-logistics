@@ -198,4 +198,36 @@ check("inbox shows 'Invoice …' and 'payment received'", inbox.includes(`Invoic
 check("Kivu's users got none of it", (await svc.from("notifications").select("id, profiles!inner(organization_id)")
   .eq("shipment_id", shipId).neq("profiles.organization_id", akagera.id).in("template_key", ["invoice.issued", "payment.verified"])).data?.length === 0);
 
+// ---- reminders and overdue (0023) ----
+console.log("\nPayment reminders:");
+const kigaliDay = (n) => new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Kigali" }).format(new Date(Date.now() + n * 864e5));
+await formAction(finance, "saveInvoiceDraft", [null, undefined], { shipment_id: shipId, currency: "USD", lines: lines(LINES.slice(1)) }, NEW);
+const late = (await invoicesOf()).find((i) => i.status === "draft");
+const LATE = `/admin/finance/invoices/${late.id}`;
+r = await formAction(finance, "issueInvoice", [late.id, undefined], { issue_date: kigaliDay(-12), due_date: kigaliDay(-8) }, LATE);
+const lateRow = (await invoicesOf()).find((i) => i.id === late.id);
+check("a backdated invoice issued past its due date is overdue at once", r.value?.ok === true && lateRow.status === "overdue", JSON.stringify([r.value, lateRow?.status]));
+const { data: finP } = await svc.from("profiles").select("id").eq("email", "finance@ngb.example").single();
+const alertsFor = async (tpl, id) => ((await svc.from("notifications").select("id").eq("template_key", tpl)
+  .eq("recipient_id", finP.id).like("event_key", `invoice:${id}:%`)).data ?? []).length;
+check("finance is alerted that it is overdue", (await alertsFor("staff.invoice_overdue", late.id)) === 1);
+check("finance was alerted when the first invoice was disputed", (await alertsFor("staff.invoice_disputed", inv.id)) === 1);
+
+r = await formAction(doc, "runFinanceReminders", [], {}, "/admin/finance");
+check("doc officer cannot run reminders", !(r.redirect ?? "").includes("reminders="), r.redirect);
+r = await formAction(finance, "runFinanceReminders", [], {}, "/admin/finance");
+check("finance runs reminders now → result shown", /reminders=\d+-\d+/.test(r.redirect ?? ""), r.redirect);
+const rem = (await svc.from("invoice_reminders").select("stage, days_from_due").eq("invoice_id", late.id)).data ?? [];
+check("8 days overdue → the +7 stage only, logged once", rem.length === 1 && rem[0].stage === 7 && rem[0].days_from_due === 8, JSON.stringify(rem));
+const remN = (await svc.from("notifications").select("recipient_id, payload").eq("event_key", `reminder:${late.id}:7`)).data ?? [];
+check("client users notified with days overdue and balance as text",
+  remN.some((n) => n.recipient_id === alineP.id) && remN.every((n) => n.payload.days_from_due === 8 && n.payload.balance_due === "2400.00"), JSON.stringify(remN.map((n) => n.payload)));
+await formAction(finance, "runFinanceReminders", [], {}, "/admin/finance");
+check("running again sends no second reminder (AC-13)",
+  ((await svc.from("invoice_reminders").select("id").eq("invoice_id", late.id)).data ?? []).length === 1
+  && ((await svc.from("notifications").select("id").like("event_key", `reminder:${late.id}:%`).eq("recipient_id", alineP.id)).data ?? []).length === 1);
+check("the paid invoice got no reminder", ((await svc.from("invoice_reminders").select("id").eq("invoice_id", inv.id)).data ?? []).length === 0);
+check("invoice page lists the reminder", (await html(LATE, finance)).includes("8 days overdue"));
+check("client inbox shows 'payment overdue'", (await html("/portal/notifications", aline)).includes(`${lateRow.invoice_number}: payment overdue`));
+
 finish();

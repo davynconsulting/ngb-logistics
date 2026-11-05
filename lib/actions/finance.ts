@@ -124,6 +124,16 @@ export async function voidInvoice(invoiceId: string, _prev: FinanceState, fd: Fo
   return { ok: true, message: "Invoice voided." };
 }
 
+/** Run the daily overdue refresh and reminders now (same function as the schedule). */
+export async function runFinanceReminders(): Promise<void> {
+  await requireStaff(...WRITERS);
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("run_finance_reminders");
+  if (error) redirect("/admin/finance?reminders=failed");
+  const r = data?.[0];
+  redirect(`/admin/finance?reminders=${r?.overdue ?? 0}-${r?.reminders ?? 0}`);
+}
+
 export async function setInvoiceDispute(invoiceId: string, open: boolean, _prev: FinanceState, fd: FormData): Promise<FinanceState> {
   await requireStaff(...FINANCE_READERS);
   const parsed = disputeSchema.safeParse({ open, reason: text(fd, "reason") });

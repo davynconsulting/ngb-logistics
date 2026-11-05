@@ -9,6 +9,8 @@ import { formatDate } from "@/lib/format";
 import { PageHeader } from "@/components/layout/page-header";
 import { InvoiceStatusBadge } from "@/components/finance/invoice-status-badge";
 import { Button } from "@/components/ui/button";
+import { FormAlert } from "@/components/auth/form-alert";
+import { runFinanceReminders } from "@/lib/actions/finance";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +30,8 @@ async function Invoices({ searchParams }: Pick<PageProps<"/admin/finance">, "sea
   const filter = parseInvoiceFilter(sp.filter);
   const q = typeof sp.q === "string" ? sp.q.slice(0, 40) : "";
   const [invoices, open] = await Promise.all([listInvoices({ filter, q }), getReceivables()]);
+  const run = typeof sp.reminders === "string" ? sp.reminders : undefined;
+  const [overdueN, remindersN] = run && run !== "failed" ? run.split("-").map(Number) : [];
 
   // Owed per currency, never summed across currencies
   const owed = new Map<string, { total: Decimal; overdue: Decimal; count: number }>();
@@ -42,8 +46,20 @@ async function Invoices({ searchParams }: Pick<PageProps<"/admin/finance">, "sea
   return (
     <>
       <PageHeader title="Finance" description="Invoices, payments and balances"
-        actions={canWriteFinance(user.role) && <Button asChild><Link href="/admin/finance/invoices/new">New invoice</Link></Button>} />
+        actions={canWriteFinance(user.role) && (
+          <>
+            <form action={runFinanceReminders}><Button type="submit" variant="outline">Send reminders now</Button></form>
+            <Button asChild><Link href="/admin/finance/invoices/new">New invoice</Link></Button>
+          </>
+        )} />
       <div className="flex flex-col gap-4">
+        {run === "failed" && <FormAlert kind="error">Reminders could not run. Please try again.</FormAlert>}
+        {run && run !== "failed" && (
+          <FormAlert kind="success">
+            Done: {remindersN} reminder{remindersN === 1 ? "" : "s"} sent, {overdueN} invoice{overdueN === 1 ? "" : "s"} checked for overdue.
+            Reminders also run automatically every morning; each stage is sent once.
+          </FormAlert>
+        )}
         {owed.size > 0 && (
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Outstanding by currency">
             {[...owed].sort(([a], [b]) => a.localeCompare(b)).map(([c, o]) => (

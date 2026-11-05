@@ -95,6 +95,8 @@ export function formatDay(v: unknown): string | null {
 
 const invoiceUrl = (n: string | null) => (n && /^INV-\d{4}-\d{5,}$/.test(n) ? `/portal/invoices/${n}` : "/portal/invoices");
 
+const adminInvoiceUrl = (id: unknown) => (str(id) && /^[0-9a-f-]{36}$/i.test(String(id)) ? `/admin/finance/invoices/${id}` : "/admin/finance");
+
 const portalUrl = (ref: string | null) => (ref ? `/portal/shipments/${encodeURIComponent(ref)}` : "/portal");
 const adminUrl = (id: unknown) => (str(id) && /^[0-9a-f-]{36}$/i.test(String(id)) ? `/admin/shipments/${id}` : "/admin");
 
@@ -168,6 +170,35 @@ export function renderNotification(n: NotificationInput): RenderedNotification {
       + (rcpt ? ` Receipt ${rcpt}.` : "");
     url = rcpt && /^RCPT-\d{4}-\d{5,}$/.test(rcpt) ? `/portal/receipts/${rcpt}` : invoiceUrl(inv);
     tag = `payment-${inv ?? "x"}`;
+  } else if (key === "invoice.reminder") {
+    const inv = str(p.invoice_number);
+    const balance = formatMoneyText(p.balance_due, p.currency);
+    const due = formatDay(p.due_date);
+    const days = typeof p.days_from_due === "number" && Number.isInteger(p.days_from_due) ? p.days_from_due : null;
+    const plural = (n: number) => `${n} day${n === 1 ? "" : "s"}`;
+    if (days !== null && days > 0) {
+      title = inv ? `${inv}: payment overdue` : "Payment overdue";
+      body = `${balance ?? "The balance"} was due ${due ?? "earlier"} (${plural(days)} ago). Please pay or contact NGB finance if you have a question.`;
+    } else if (days === 0) {
+      title = inv ? `${inv}: payment due today` : "Payment due today";
+      body = `${balance ?? "The balance"} is due today.`;
+    } else {
+      title = inv ? `${inv}: payment due soon` : "Payment due soon";
+      body = `${balance ?? "The balance"} is due ${due ?? "soon"}${days !== null ? ` (in ${plural(-days)})` : ""}.`;
+    }
+    if (str(p.payment_instructions)) body += ` How to pay: ${clip(str(p.payment_instructions)!, 300)}`;
+    url = invoiceUrl(inv);
+    tag = `invoice-${inv ?? "x"}`;
+  } else if (key === "staff.invoice_overdue" || key === "staff.invoice_disputed") {
+    const inv = str(p.invoice_number) ?? "Invoice";
+    const balance = formatMoneyText(p.balance_due, p.currency);
+    const overdue = key === "staff.invoice_overdue";
+    title = `${overdue ? "Overdue" : "Disputed"}: ${inv}`;
+    body = [str(p.client_name), balance && `balance ${balance}`, overdue && formatDay(p.due_date) && `due ${formatDay(p.due_date)}`,
+      !overdue && str(p.reason) && clip(str(p.reason)!, 200)].filter(Boolean).join(" · ")
+      || (overdue ? "An invoice is past its due date." : "A client disputed an invoice.");
+    url = adminInvoiceUrl(p.invoice_id);
+    tag = `finance-${inv}`;
   } else if (key === "shipment.alert") {
     title = ref ? `${ref}: update` : "Shipment update";
     body = clip(str(p.message) ?? "There is an update on your shipment.", 500);
