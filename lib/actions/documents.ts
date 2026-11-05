@@ -83,7 +83,8 @@ export async function finalizeDocumentUpload(input: FinalizeUploadInput): Promis
     p_file_name: cleanFileName(v.fileName),
     p_container_id: v.containerId,
     p_replaces_document_id: v.replacesId,
-    p_client_visible: user.role === "client" ? true : v.clientVisible, // a client's own upload is always visible to it
+    // a client's own upload is always visible to it; a driver's waits for staff (the database enforces both)
+    p_client_visible: user.role === "client" ? true : user.role === "driver" ? false : v.clientVisible,
   });
   if (error) {
     if (error.code === "P0002") return { ok: false, error: "The upload didn't finish. Please try again." };

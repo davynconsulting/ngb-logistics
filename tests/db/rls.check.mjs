@@ -445,6 +445,9 @@ await ms("gate-out for container 1 after release", transport, sA.id, "gate_out",
 
 await msErr("unassigned driver cannot record", driver, sA.id, "arrived", ago(5), { containers: [c1] }, /not found/);
 await db.query("insert into shipment_assignments (shipment_id, user_id) values ($1, $2)", [sA.id, driver]);
+await msErr("a shipment_assignments row alone no longer gives a driver access (0020)", driver, sA.id, "arrived_at_border", ago(10), { containers: [c1], location: "Rusumo" }, /not found/);
+// drivers work through their truck assignment (0020): put the driver on the truck carrying both containers
+await db.query("update transport_assignments set driver_user_id = $2 where shipment_id = $1 and status = 'active'", [sA.id, driver]);
 await msErr("driver cannot record port milestones", driver, sA.id, "ready_for_dispatch", ago(5), { containers: [c1] }, /cannot record/);
 await ms("driver records a border checkpoint", driver, sA.id, "arrived_at_border", ago(10), { containers: [c1], location: "Rusumo" });
 await ms("driver records arrival", driver, sA.id, "arrived", ago(5), { containers: [c1], internal: "Gate guard asked for extra copy", visible: true });
@@ -885,6 +888,77 @@ await expectError("anonymous cannot register", "anon", REG, /permission denied/,
 await expectError("plain http refused", ops, REG, /check constraint/, ["http://fcm.googleapis.com/x", dev.p256dh, dev.auth, null]);
 for (let i = 0; i < 11; i++) await as(ops, REG, [`https://fcm.googleapis.com/fcm/send/ops-${i}`, dev.p256dh, dev.auth, null]);
 await expectRows("at most 10 devices per user (oldest dropped)", null, "select 1 from push_subscriptions where user_id = $1", 10, [ops]);
+
+console.log("\nDriver workspace (0020):");
+const driver2 = await user("driver2@ngb.test", "driver", ngb);
+const jobs = (await as(driver, "select * from driver_jobs()")).rows;
+const jT = jobs.find((j) => j.shipment_id === sT);
+jT && jT.assignment_id === a1 && jT.client_name && jT.containers.length === 1 && jT.containers[0].id === t1 && jT.ops_contact_name !== undefined
+  ? ok(`driver sees their jobs (${jobs.length}), with client, containers and ops contact`) : bad("driver_jobs", JSON.stringify(jobs).slice(0, 200));
+await expectRows("another driver sees none of them", driver2, "select 1 from driver_jobs()", 0);
+await expectRows("clients get nothing from driver_jobs", cA, "select 1 from driver_jobs()", 0);
+await expectRows("office staff get nothing from driver_jobs", ops, "select 1 from driver_jobs()", 0);
+await expectRows("another driver cannot read the shipment", driver2, "select 1 from shipments where id = $1", 0, [sT]);
+await expectRows("another driver cannot read the job's events", driver2, "select 1 from driver_job_events($1)", 0, [a1]);
+const evs = (await as(driver, "select * from driver_job_events($1)", [a1])).rows;
+evs.length >= 2 && evs.every((e) => e.container_number) && evs.some((e) => e.recorded_by_me)
+  ? ok(`driver sees the job's events since the truck was assigned (${evs.length})`) : bad("job events", JSON.stringify(evs).slice(0, 200));
+
+await expectRows("driver reads only their own profile", driver, "select 1 from profiles", 1);
+await expectRows("driver reads only NGB's organization (no client details)", driver, "select 1 from organizations", 1);
+await expectRows("driver cannot read milestone events directly (override reasons)", driver, "select 1 from milestone_events", 0);
+await expectRows("driver cannot read internal notes", driver, "select 1 from milestone_internal_notes", 0);
+await expectRows("driver cannot read hidden ETA reasons", driver, "select 1 from eta_revisions where not client_visible", 0);
+await expectRows("driver cannot read settings or SLA rules", driver, "select 1 from app_settings union all select 1 from sla_rules", 0);
+await expectRows("driver sees only their own trucks", driver, "select 1 from transport_assignments where driver_user_id is distinct from $1", 0, [driver]);
+await expectRows("…not the cancelled truck of container 2", driver, "select 1 from transport_assignments where shipment_id = $1", 1, [sT]);
+await expectRows("office staff still read profiles and organizations", ops, "select 1 from organizations where id = $1", 1, [A]);
+await expectRows("client still sees colleagues only", cA, "select 1 from profiles where organization_id <> $1", 0, [A]);
+
+await expectError("driver cannot record for a container that is not on their truck", driver, MS, /on your truck/, msArgs(sT, "update", ago(0.01), { containers: [t2], internal: "x" }));
+await expectError("…or a shipment-wide update", driver, MS, /on your truck/, msArgs(sT, "update", ago(0.01), { internal: "x" }));
+await expectError("driver notes never go to the client", driver, MS, /staff only/, msArgs(sT, "update", ago(0.01), { containers: [t1], note: "Client: call me" }));
+
+const dPod = "aaaaaaaa-0020-4aaa-8aaa-aaaaaaaaaaa1";
+const podPath = `${A}/${sA.id}/${dPod}/pod.jpg`;
+await putFile(podPath, 2000, "image/jpeg");
+await expectOk("driver uploads a POD photo marked for the client", driver,
+  "insert into documents (id, shipment_id, document_type, storage_path, file_name, mime_type, size_bytes, client_visible) values ($1, $2, 'proof_of_delivery', $3, 'pod.jpg', 'image/jpeg', 2000, true)", [dPod, sA.id, podPath]);
+await expectRows("…stored hidden from the client until staff publish it", null, "select 1 from documents where id = $1 and not client_visible", 1, [dPod]);
+await expectRows("driver sees their own upload", driver, "select 1 from documents where id = $1", 1, [dPod]);
+await expectRows("driver does not see commercial or customs documents", driver, "select 1 from documents where document_type in ('bill_of_lading', 'customs_entry', 'commercial_invoice')", 0);
+await expectRows("driver can still open their own file in storage", driver, "select 1 from storage.objects where name = $1", 1, [podPath]);
+await expectRows("…but not the BL file", driver, "select 1 from storage.objects where name = $1", 0, [pA1]);
+
+await expectError("another driver cannot change this driver's consent", driver2, "select set_my_contact_sharing($1, false)", /not found/, [a1]);
+await expectError("clients cannot use the driver consent function", cA, "select set_my_contact_sharing($1, false)", /not allowed/, [a1]);
+await expectOk("driver withdraws consent to share their contact", driver, "select set_my_contact_sharing($1, false)", [a1]);
+await expectRows("…the client no longer sees the driver contact", cA, "select 1 from client_transport($1) where driver_name is not null", 0, [sT]);
+await expectRows("…and the change is audited with the driver as actor", null,
+  "select 1 from audit_log where table_name = 'driver_contacts' and actor_id = $1", 1, [driver]);
+await expectOk("driver agrees again", driver, "select set_my_contact_sharing($1, true)", [a1]);
+await expectRows("…shown again (organization policy is on)", cA, "select 1 from client_transport($1) where driver_name is not null", 1, [sT]);
+
+const RP = "select driver_report_problem($1, $2, $3::uuid[], $4) id";
+await expectError("a problem report needs a description", driver, RP, /Describe/, [a1, " ", null, null]);
+await expectError("another driver cannot report on this job", driver2, RP, /not found/, [a1, "Flat tyre", null, null]);
+await expectError("office staff use exceptions instead", ops, RP, /not allowed/, [a1, "Flat tyre", null, null]);
+const rp = await expectOk("driver reports a problem", driver, RP, [a1, "Flat tyre near Kayonza, about 2 hours delay", null, "rp-1"]);
+await expectOk("…the same tap again (retry)", driver, RP, [a1, "Flat tyre near Kayonza, about 2 hours delay", null, "rp-1"]);
+const rpId = rp?.rows[0]?.id;
+await expectRows("recorded once, staff-only, from the driver", null,
+  "select 1 from milestone_events where idempotency_key = 'rp-1' and not client_visible and source = 'driver' and public_note is null", 1);
+await expectRows("the note reaches staff", ops, "select 1 from milestone_internal_notes where shipment_id = $1 and note like 'Driver report: Flat tyre%'", 1, [sT]);
+await expectRows("the ops owner and the coordinator are notified once", null,
+  "select 1 from notifications where template_key = 'staff.driver_report' and event_key = $1", 2, ["driver_report:" + rpId]);
+await expectRows("the client is not notified", null,
+  "select 1 from notifications n join profiles p on p.id = n.recipient_id where n.event_key like 'milestone:%' and p.role = 'client' and n.shipment_id = $1 and n.payload ->> 'milestone' = 'update' and n.created_at > now() - interval '1 minute'", 0, [sT]);
+
+await db.query("update transport_assignments set status = 'cancelled', cancelled_at = now(), cancel_reason = 'test: revoke' where id = $1", [a1]);
+await expectRows("a cancelled truck ends the driver's access at once", driver, "select 1 from shipments where id = $1", 0, [sT]);
+await expectRows("…and the job disappears", driver, "select 1 from driver_jobs() where assignment_id = $1", 0, [a1]);
+await expectError("…and nothing more can be recorded", driver, MS, /not found/, msArgs(sT, "update", ago(0.01), { containers: [t1], internal: "x" }));
+await db.query("update transport_assignments set status = 'active', cancelled_at = null, cancel_reason = null where id = $1", [a1]);
 
 console.log("\nProfile sync:");
 await expectRows("user with no profile sees no shipments", nobody, "select id from shipments", 0);

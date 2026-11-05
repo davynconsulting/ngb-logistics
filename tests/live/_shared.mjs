@@ -16,7 +16,11 @@ export const APP = process.env.LIVE_APP_URL ?? "http://localhost:3123";
 export const BUCKET = "shipment-documents";
 if (!URL_?.includes("idyydcuihxkyitylkugo")) throw new Error("Live checks only run against the dev project");
 
-export const svc = createClient(URL_, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+/** Every request gives up after 60 s, so a stalled connection fails a check instead of freezing the run. */
+const timedFetch = (url, opts = {}) => fetch(url, { ...opts, signal: opts.signal ?? AbortSignal.timeout(60_000) });
+const global = { fetch: timedFetch };
+
+export const svc = createClient(URL_, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false }, global });
 
 let pass = 0, fail = 0;
 export const totals = { pass: 0, fail: 0 };
@@ -42,7 +46,7 @@ export async function login(email) {
 }
 async function signInOnce(email) {
   const jar = new Map();
-  const ssr = createServerClient(URL_, ANON, { cookies: {
+  const ssr = createServerClient(URL_, ANON, { global, cookies: {
     getAll: () => [...jar].map(([name, value]) => ({ name, value })),
     setAll: (cs) => cs.forEach(({ name, value }) => (value ? jar.set(name, value) : jar.delete(name))) } });
   const { error } = await ssr.auth.signInWithPassword({ email, password: PW });
@@ -50,12 +54,12 @@ async function signInOnce(email) {
   await new Promise((r) => setTimeout(r, 50));
   const { data: { session } } = await ssr.auth.getSession();
   // Same session for direct API calls (no second sign-in; no auto refresh so the token isn't rotated)
-  const api = createClient(URL_, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
+  const api = createClient(URL_, ANON, { auth: { persistSession: false, autoRefreshToken: false }, global });
   await api.auth.setSession({ access_token: session.access_token, refresh_token: session.refresh_token });
   return { cookie: [...jar].map(([n, v]) => `${n}=${v}`).join("; "), api };
 }
 
-export const get = (path, who) => fetch(APP + path, { headers: who?.cookie ? { cookie: who.cookie } : {}, redirect: "manual" });
+export const get = (path, who) => timedFetch(APP + path, { headers: who?.cookie ? { cookie: who.cookie } : {}, redirect: "manual" });
 export const pageText = async (r) => (await r.text()).replace(/<!-- -->/g, "");
 
 const manifest = () => JSON.parse(fs.readFileSync(".next/server/server-reference-manifest.json", "utf8")).node;
@@ -67,7 +71,7 @@ export const actionId = (name) => {
 };
 
 async function post(who, name, body, page, extraHeaders = {}) {
-  const r = await fetch(APP + page, { method: "POST", redirect: "manual", body,
+  const r = await timedFetch(APP + page, { method: "POST", redirect: "manual", body,
     headers: { ...(who?.cookie ? { cookie: who.cookie } : {}), "Next-Action": actionId(name), Accept: "text/x-component", ...extraHeaders } });
   const text = await r.text();
   const m = text.match(/^1:(.*)$/m);

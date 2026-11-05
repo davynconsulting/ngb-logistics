@@ -146,6 +146,12 @@ export function renderNotification(n: NotificationInput): RenderedNotification {
     body = `${doc}${str(p.file_name) ? ` (${clip(str(p.file_name)!, 60)})` : ""} is waiting for review.`;
     url = adminUrl(shipmentId);
     tag = `upload-${shipmentId ?? "x"}`;
+  } else if (key === "staff.driver_report") {
+    const truck = str(p.truck);
+    title = ref ? `${ref}: driver report` : "Driver report";
+    body = `${truck ? `Truck ${truck}: ` : ""}${clip(str(p.message) ?? "The driver reported a problem.", 300)}`;
+    url = adminUrl(shipmentId);
+    tag = `driver-report-${shipmentId ?? "x"}`;
   } else {
     throw new UnknownTemplateError(`No template for ${key}`);
   }

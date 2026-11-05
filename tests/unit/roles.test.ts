@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import { areaOf, canUseArea, homePathFor, isAppRole, safeNextPath } from "@/lib/auth/roles";
 
 describe("role routing", () => {
-  it("sends clients to the portal and every staff role to admin", () => {
+  it("sends clients to the portal, drivers to the driver pages and other staff to admin", () => {
     expect(homePathFor("client")).toBe("/portal");
-    for (const r of ["admin", "ops_manager", "doc_officer", "clearing_agent", "transport_coord", "driver", "finance"] as const) {
+    expect(homePathFor("driver")).toBe("/driver");
+    for (const r of ["admin", "ops_manager", "doc_officer", "clearing_agent", "transport_coord", "finance"] as const) {
       expect(homePathFor(r)).toBe("/admin");
     }
   });
@@ -16,13 +17,22 @@ describe("role routing", () => {
     expect(areaOf("/administrator")).toBeNull();
     expect(areaOf("/portals")).toBeNull();
     expect(areaOf("/login")).toBeNull();
+    expect(areaOf("/driver")).toBe("driver");
+    expect(areaOf("/driver/jobs/1")).toBe("driver");
+    expect(areaOf("/drivers")).toBeNull();
   });
 
   it("keeps clients out of admin and staff out of the portal", () => {
     expect(canUseArea("client", "admin")).toBe(false);
     expect(canUseArea("client", "portal")).toBe(true);
     expect(canUseArea("finance", "portal")).toBe(false);
-    expect(canUseArea("driver", "admin")).toBe(true);
+    expect(canUseArea("driver", "admin")).toBe(false);
+    expect(canUseArea("driver", "driver")).toBe(true);
+    expect(canUseArea("driver", "portal")).toBe(false);
+    expect(canUseArea("admin", "driver")).toBe(false);
+    expect(canUseArea("client", "driver")).toBe(false);
+    expect(safeNextPath("/admin/shipments", "driver")).toBeNull();
+    expect(safeNextPath("/driver/jobs/x", "driver")).toBe("/driver/jobs/x");
   });
 
   it("validates roles", () => {

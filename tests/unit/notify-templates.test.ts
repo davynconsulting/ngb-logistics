@@ -39,6 +39,13 @@ describe("notification templates", () => {
     expect(renderNotification({ template_key: "staff.exception_opened", payload: sample }).url).toBe(`/admin/shipments/${sample.shipment_id}`);
   });
 
+  it("driver reports go to the shipment's staff page with the driver's words", () => {
+    const r = renderNotification({ template_key: "staff.driver_report", payload: { ...sample, truck: "RAD 123 B", message: "Flat tyre near Kayonza" } });
+    expect(r.title).toBe("NGB-2026-00012: driver report");
+    expect(r.body).toBe("Truck RAD 123 B: Flat tyre near Kayonza");
+    expect(r.url).toBe(`/admin/shipments/${sample.shipment_id}`);
+  });
+
   it("formats times in the client's time zone", () => {
     const kgl = renderNotification({ template_key: "milestone.gate_out", payload: sample, timezone: "Africa/Kigali" });
     expect(kgl.body).toContain("12 Nov, 14:30"); // 12:30 UTC = 14:30 CAT

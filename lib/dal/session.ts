@@ -74,11 +74,22 @@ export async function requireUser(): Promise<SessionUser> {
   return state.user;
 }
 
-/** NGB staff only. Clients are sent to their portal. */
+/**
+ * NGB staff only. Clients are sent to their portal. Drivers are field users
+ * with their own pages: they pass only where "driver" is listed explicitly.
+ */
 export async function requireStaff(...allowed: AppRole[]): Promise<SessionUser> {
   const user = await requireUser();
   if (!user.isStaff) redirect(homePathFor(user.role));
+  if (user.role === "driver" && !allowed.includes("driver")) redirect("/driver");
   if (allowed.length && !allowed.includes(user.role)) redirect("/admin");
+  return user;
+}
+
+/** Drivers only (the /driver pages). Everyone else goes to their own home. */
+export async function requireDriver(): Promise<SessionUser> {
+  const user = await requireUser();
+  if (user.role !== "driver") redirect(homePathFor(user.role));
   return user;
 }
 

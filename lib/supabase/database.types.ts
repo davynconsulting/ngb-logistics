@@ -1825,6 +1825,55 @@ export type Database = {
         }
         Returns: string
       }
+      driver_job_events: {
+        Args: { p_assignment_id: string }
+        Returns: {
+          container_number: string
+          event_at: string
+          event_id: string
+          label: string
+          location: string
+          milestone_type: Database["public"]["Enums"]["milestone_type"]
+          recorded_by_me: boolean
+          source: Database["public"]["Enums"]["event_source"]
+        }[]
+      }
+      driver_jobs: {
+        Args: never
+        Returns: {
+          actual_loading_at: string
+          assigned_at: string
+          assignment_id: string
+          border_crossing: string
+          cargo_description: string
+          client_allows_contact: boolean
+          client_name: string
+          containers: Json
+          delivery_address: string
+          destination_city: string
+          destination_country: string
+          ops_contact_name: string
+          ops_contact_phone: string
+          planned_loading_at: string
+          route_name: string
+          share_with_client: boolean
+          shipment_id: string
+          shipment_reference: string
+          trailer_registration: string
+          transit_estimate_hours: number
+          transporter_name: string
+          truck_registration: string
+        }[]
+      }
+      driver_report_problem: {
+        Args: {
+          p_assignment_id: string
+          p_container_ids?: string[]
+          p_idempotency_key?: string
+          p_message: string
+        }
+        Returns: string
+      }
       escalate_exception: {
         Args: { p_exception_id: string; p_note: string }
         Returns: undefined
@@ -1943,6 +1992,10 @@ export type Database = {
       }
       set_exception_client_message: {
         Args: { p_exception_id: string; p_message: string; p_visible: boolean }
+        Returns: undefined
+      }
+      set_my_contact_sharing: {
+        Args: { p_assignment_id: string; p_share: boolean }
         Returns: undefined
       }
       update_exception: {

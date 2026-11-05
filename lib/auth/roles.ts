@@ -37,10 +37,11 @@ export function isStaffRole(role: AppRole): boolean {
   return role !== "client";
 }
 
-export type Area = "portal" | "admin";
+export type Area = "portal" | "admin" | "driver";
 
 /** Where each role lands after signing in. */
-export function homePathFor(role: AppRole): "/portal" | "/admin" {
+export function homePathFor(role: AppRole): "/portal" | "/admin" | "/driver" {
+  if (role === "driver") return "/driver";
   return isStaffRole(role) ? "/admin" : "/portal";
 }
 
@@ -48,11 +49,15 @@ export function homePathFor(role: AppRole): "/portal" | "/admin" {
 export function areaOf(pathname: string): Area | null {
   if (pathname === "/admin" || pathname.startsWith("/admin/")) return "admin";
   if (pathname === "/portal" || pathname.startsWith("/portal/")) return "portal";
+  if (pathname === "/driver" || pathname.startsWith("/driver/")) return "driver";
   return null;
 }
 
+/** Clients use the portal, drivers the driver pages, every other staff role the admin console. */
 export function canUseArea(role: AppRole, area: Area): boolean {
-  return area === "admin" ? isStaffRole(role) : !isStaffRole(role);
+  if (area === "driver") return role === "driver";
+  if (area === "admin") return isStaffRole(role) && role !== "driver";
+  return !isStaffRole(role);
 }
 
 /**
