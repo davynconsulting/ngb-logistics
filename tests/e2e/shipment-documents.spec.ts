@@ -64,7 +64,7 @@ test("doc officer uploads, verifies and opens a document (AC-16)", async ({ page
   await expect(page.getByText("Verified", { exact: true })).toBeVisible();
 
   // The View link redirects to a short-lived signed URL
-  const href = await page.getByRole("link", { name: "View" }).first().getAttribute("href");
+  const href = await page.getByRole("link", { name: "View", exact: true }).first().getAttribute("href");
   expect(href).toMatch(/^\/documents\/[0-9a-f-]{36}$/);
   const res = await page.request.get(href!, { maxRedirects: 0 });
   expect(res.status()).toBe(303);
@@ -76,7 +76,7 @@ test("another client cannot open the document link", async ({ browser }) => {
   const staff = await browser.newPage();
   await signIn(staff, "doc.officer@ngb.example");
   await staff.goto(shipmentUrl);
-  const href = await staff.getByRole("link", { name: "View" }).first().getAttribute("href");
+  const href = await staff.getByRole("link", { name: "View", exact: true }).first().getAttribute("href");
   await staff.close();
 
   const other = await browser.newPage();
