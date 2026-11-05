@@ -11,10 +11,10 @@ test("finance: invoice list and draft editor with a decimal-exact live preview",
 
   await page.getByRole("link", { name: "New invoice" }).click();
   await expect(page.getByRole("heading", { name: "New invoice" })).toBeVisible();
-  await page.getByLabel("Line 1").fill("Port handling (e2e, not saved)");
-  await page.getByLabel("Qty").fill("2");
-  await page.getByLabel("Unit price").fill("150.25");
-  await page.getByLabel("Tax %").fill("18");
+  await page.getByLabel("Line 1", { exact: true }).fill("Port handling (e2e, not saved)");
+  await page.getByLabel("Qty", { exact: true }).fill("2");
+  await page.getByLabel("Unit price", { exact: true }).fill("150.25");
+  await page.getByLabel("Tax %", { exact: true }).fill("18");
   // 2 × 150.25 = 300.50; 18% tax = 54.09; total 354.59 (same rounding as the database)
   await expect(page.getByText("354.59 USD")).toBeVisible();
   await expectNoHorizontalScroll(page);

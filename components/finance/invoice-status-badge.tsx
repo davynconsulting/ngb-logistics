@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { INVOICE_STATUS_LABELS, type InvoiceStatus } from "@/lib/domain/finance";
+import { CLIENT_INVOICE_STATUS_LABELS, INVOICE_STATUS_LABELS, type InvoiceStatus } from "@/lib/domain/finance";
 import { cn } from "@/lib/utils";
 
 const styles: Record<InvoiceStatus, string> = {
@@ -12,6 +12,8 @@ const styles: Record<InvoiceStatus, string> = {
   void: "bg-muted text-muted-foreground line-through",
 };
 
-export function InvoiceStatusBadge({ status, className }: { status: InvoiceStatus; className?: string }) {
-  return <Badge variant="secondary" className={cn(styles[status], className)}>{INVOICE_STATUS_LABELS[status]}</Badge>;
+/** Staff wording by default; `client` uses the portal wording ("Under review", "Cancelled"). */
+export function InvoiceStatusBadge({ status, className, client }: { status: InvoiceStatus; className?: string; client?: boolean }) {
+  const label = (client ? CLIENT_INVOICE_STATUS_LABELS : INVOICE_STATUS_LABELS)[status];
+  return <Badge variant="secondary" className={cn(styles[status], className)}>{label}</Badge>;
 }

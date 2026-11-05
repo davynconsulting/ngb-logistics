@@ -29,6 +29,10 @@ test("client portal on a 360 px phone: overview, shipment, inbox, settings (AC-1
     await expectNoHorizontalScroll(page);
   }
 
+  await bottom.getByRole("link", { name: "Invoices" }).click();
+  await expect(page.getByRole("heading", { name: "Invoices" })).toBeVisible();
+  await expectNoHorizontalScroll(page);
+
   await bottom.getByRole("link", { name: "Notifications" }).click();
   await expect(page.getByRole("heading", { name: "Notifications" })).toBeVisible();
   await expectNoHorizontalScroll(page);

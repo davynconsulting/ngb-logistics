@@ -1,18 +1,16 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
-import { filterStatuses, type InvoiceFilter } from "@/lib/domain/finance";
+import { filterStatuses, moneyText, type InvoiceFilter } from "@/lib/domain/finance";
 
 /*
  * Finance reads AS THE SIGNED-IN USER. RLS (0021) lets only finance, admin and
  * ops managers read invoices, lines, payments, reviews and credit notes; anyone
  * else gets empty results. PostgREST sends numerics as JSON numbers; they are
- * turned into fixed 2-decimal strings right here and the app uses strings from
- * then on. This is exact: numeric(14,2) holds at most 10^14 cents, well below
- * 2^53, so the nearest double always prints back to the same 2 decimals.
+ * turned into fixed 2-decimal strings right here (moneyText) and the app uses
+ * strings from then on.
  */
 
-/** numeric(14,2) → "1234.50". PostgREST sends numerics as JSON numbers. */
-const money = (v: number | string | null | undefined) => (v == null ? "0.00" : typeof v === "string" ? v : v.toFixed(2));
+const money = moneyText;
 const one = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? (v[0] ?? null) : (v ?? null));
 
 const INVOICE_LIST = `id, invoice_number, status, currency, issue_date, due_date, total, balance_due, disputed_at, created_at,

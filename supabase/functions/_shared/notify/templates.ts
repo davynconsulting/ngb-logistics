@@ -76,6 +76,25 @@ function containersText(v: unknown): string | null {
   return `${list.length} containers`;
 }
 
+/** "2878.49" + "USD" → "2,878.49 USD". String-only (amounts arrive as exact text; never floats). */
+export function formatMoneyText(amount: unknown, currency: unknown): string | null {
+  const a = str(amount);
+  if (!a || !/^\d+(\.\d{1,2})?$/.test(a)) return null;
+  const [int, frac = ""] = a.split(".");
+  const grouped = int.replace(/^0+(?=\d)/, "").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${grouped}.${frac.padEnd(2, "0")}${str(currency) ? ` ${str(currency)}` : ""}`;
+}
+
+/** "2026-12-05" → "5 Dec 2026" (a calendar date: no time-zone shift). */
+export function formatDay(v: unknown): string | null {
+  const m = str(v)?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(m[2]) - 1];
+  return month ? `${Number(m[3])} ${month} ${m[1]}` : null;
+}
+
+const invoiceUrl = (n: string | null) => (n && /^INV-\d{4}-\d{5,}$/.test(n) ? `/portal/invoices/${n}` : "/portal/invoices");
+
 const portalUrl = (ref: string | null) => (ref ? `/portal/shipments/${encodeURIComponent(ref)}` : "/portal");
 const adminUrl = (id: unknown) => (str(id) && /^[0-9a-f-]{36}$/i.test(String(id)) ? `/admin/shipments/${id}` : "/admin");
 
@@ -128,6 +147,27 @@ export function renderNotification(n: NotificationInput): RenderedNotification {
     body = `${doc} was not accepted${str(p.reason) ? `: ${clip(str(p.reason)!, 200)}` : ""}. Please upload a corrected copy${due ? ` by ${due}` : ""}.`;
     url = portalUrl(ref);
     tag = `doc-${shipmentId ?? ref ?? "x"}-${String(p.document_type)}`;
+  } else if (key === "invoice.issued") {
+    const inv = str(p.invoice_number);
+    const total = formatMoneyText(p.total, p.currency);
+    const due = formatDay(p.due_date);
+    title = inv ? `Invoice ${inv}` : "New invoice";
+    body = `${ref ? `${ref}: ` : ""}invoice${total ? ` for ${total}` : ""}${due ? `, due ${due}` : ""}.`;
+    if (str(p.balance_due) && p.balance_due !== p.total) body += ` Balance: ${formatMoneyText(p.balance_due, p.currency)}.`;
+    if (str(p.payment_instructions)) body += ` How to pay: ${clip(str(p.payment_instructions)!, 300)}`;
+    url = invoiceUrl(inv);
+    tag = `invoice-${inv ?? "x"}`;
+  } else if (key === "payment.verified") {
+    const inv = str(p.invoice_number);
+    const amount = formatMoneyText(p.amount, p.currency);
+    const balance = formatMoneyText(p.balance_due, p.currency);
+    const rcpt = str(p.receipt_number);
+    title = inv ? `${inv}: payment received` : "Payment received";
+    body = `We received ${amount ?? "your payment"}${str(p.transaction_reference) ? ` (ref ${clip(str(p.transaction_reference)!, 60)})` : ""}.`
+      + (balance ? (/^0+(\.0+)?$/.test(String(p.balance_due)) ? " The invoice is paid in full." : ` Remaining balance: ${balance}.`) : "")
+      + (rcpt ? ` Receipt ${rcpt}.` : "");
+    url = rcpt && /^RCPT-\d{4}-\d{5,}$/.test(rcpt) ? `/portal/receipts/${rcpt}` : invoiceUrl(inv);
+    tag = `payment-${inv ?? "x"}`;
   } else if (key === "shipment.alert") {
     title = ref ? `${ref}: update` : "Shipment update";
     body = clip(str(p.message) ?? "There is an update on your shipment.", 500);

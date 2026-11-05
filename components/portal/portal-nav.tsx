@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Home, Package, Settings } from "lucide-react";
+import { Bell, Home, Package, ReceiptText, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ITEMS = [
   { href: "/portal", label: "Overview", icon: Home, exact: true },
   { href: "/portal/shipments", label: "Shipments", icon: Package },
+  { href: "/portal/invoices", label: "Invoices", icon: ReceiptText },
   { href: "/portal/notifications", label: "Notifications", icon: Bell, badge: true },
   { href: "/portal/settings", label: "Settings", icon: Settings },
 ] as const;
@@ -21,7 +22,7 @@ export function PortalNav({ unread }: { unread: number }) {
 
   return (
     <>
-      <nav aria-label="Portal" className="hidden border-b bg-background sm:block">
+      <nav aria-label="Portal" className="hidden border-b bg-background sm:block print:hidden">
         <div className="mx-auto flex max-w-6xl gap-1 px-4">
           {ITEMS.map((i) => {
             const active = isActive(i.href, "exact" in i ? i.exact : false);
@@ -38,15 +39,15 @@ export function PortalNav({ unread }: { unread: number }) {
           })}
         </div>
       </nav>
-      <nav aria-label="Portal" className="fixed inset-x-0 bottom-0 z-20 border-t bg-background pb-[env(safe-area-inset-bottom)] sm:hidden">
-        <ul className="grid grid-cols-4">
+      <nav aria-label="Portal" className="fixed inset-x-0 bottom-0 z-20 border-t bg-background pb-[env(safe-area-inset-bottom)] sm:hidden print:hidden">
+        <ul className="grid grid-cols-5">
           {ITEMS.map((i) => {
             const active = isActive(i.href, "exact" in i ? i.exact : false);
             const Icon = i.icon;
             return (
               <li key={i.href}>
                 <Link href={i.href} aria-current={active ? "page" : undefined}
-                  className={cn("relative flex min-h-14 flex-col items-center justify-center gap-0.5 text-xs",
+                  className={cn("relative flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px]",
                     active ? "font-medium text-primary" : "text-muted-foreground")}>
                   <Icon className="size-5" aria-hidden />
                   {i.label}

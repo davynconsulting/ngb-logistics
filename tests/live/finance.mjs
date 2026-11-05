@@ -163,4 +163,39 @@ const [, voided] = await invoicesOf();
 check("a draft can be voided (no number used)", r.value?.ok === true && voided.status === "void" && voided.invoice_number === null, JSON.stringify(r.value));
 check("audit log records the invoice changes", ((await svc.from("audit_log").select("id").eq("table_name", "invoices").eq("record_id", inv.id)).data ?? []).length >= 3);
 
+// ---- client portal (0022) ----
+console.log("\nFinance in the client portal:");
+const jean = await login("jean@kivuhardware.example");
+const { data: rv1 } = await svc.from("payment_reviews").select("receipt_number").eq("payment_id", p1.id).single();
+const RC = rv1.receipt_number;
+const list = await html("/portal/invoices", aline);
+check("client sees the invoice in /portal/invoices", list.includes(INV) && list.includes("Paid and cancelled"));
+const invPage = await html(`/portal/invoices/${INV}`, aline);
+check("invoice page: charges, payments with receipt links, no internal notes or rejected payment",
+  invPage.includes("Port handling") && invPage.includes(`/portal/receipts/${RC}`) && invPage.includes("ref BK-")
+  && !invPage.includes("Counter payment") && !invPage.includes("Not found in the cash book") && !invPage.includes("goodwill"));
+check("the voided draft is not shown to the client", !list.includes("Duplicate draft"));
+check("receipt page for the client", (await html(`/portal/receipts/${RC}`, aline)).includes("1,000.00 USD"));
+check("another client gets 'not found' for the invoice", !(await html(`/portal/invoices/${INV}`, jean)).includes("Port handling"));
+check("…and for the receipt", !(await html(`/portal/receipts/${RC}`, jean)).includes("1,000.00 USD"));
+check("…and does not list it", !(await html("/portal/invoices", jean)).includes(INV));
+check("staff opening /portal/invoices → /admin", (await loc("/portal/invoices", finance)).endsWith("/admin"));
+check("shipment page links the invoice", (await html(`/portal/shipments/${ship.shipment_reference}`, aline)).includes(`/portal/invoices/${INV}`));
+
+const { data: alineP } = await svc.from("profiles").select("id").eq("email", "aline@akagera.example").single();
+const notes = async (template) => (await svc.from("notifications").select("payload, recipient_id")
+  .eq("template_key", template).eq("shipment_id", shipId)).data ?? [];
+const issuedN = await notes("invoice.issued");
+check("invoice issued → Akagera's users notified (only them), number and total as text",
+  issuedN.some((n) => n.recipient_id === alineP.id) && issuedN.every((n) => n.payload.invoice_number === INV && n.payload.total === "2878.49"),
+  JSON.stringify(issuedN.map((n) => n.payload.total)));
+const verN = (await notes("payment.verified")).filter((n) => n.recipient_id === alineP.id);
+check("2 verified payments → 2 messages, balances after each (1878.49, then 0.00)",
+  verN.length === 2 && verN.map((n) => n.payload.balance_due).sort().join() === "0.00,1878.49", JSON.stringify(verN.map((n) => n.payload)));
+check("the rejected payment sent nothing", !verN.some((n) => n.payload.amount === "50.00"));
+const inbox = await html("/portal/notifications", aline);
+check("inbox shows 'Invoice …' and 'payment received'", inbox.includes(`Invoice ${INV}`) && inbox.includes(`${INV}: payment received`));
+check("Kivu's users got none of it", (await svc.from("notifications").select("id, profiles!inner(organization_id)")
+  .eq("shipment_id", shipId).neq("profiles.organization_id", akagera.id).in("template_key", ["invoice.issued", "payment.verified"])).data?.length === 0);
+
 finish();

@@ -1078,9 +1078,47 @@ const n2 = (await expectOk("…issued", finance, IS, [d2, dayOff(-40), dayOff(-1
 n2 === `INV-${yr}-00002` ? ok("next number is sequential (00002)") : bad("seq", n2);
 (await inv(d2)).status === "overdue" && (await finOf(sB.id)) === "overdue" ? ok("past due → overdue; shipment shows overdue") : bad("overdue", (await inv(d2)).status);
 await expectError("void an issued invoice needs a reason", finance, "select void_invoice($1, $2)", /reason/, [d2, ""]);
-await expectRows("client B cannot read its invoice directly either (portal functions come later)", cB, "select 1 from invoices", 0);
+await expectRows("client B cannot read its invoice table rows directly (portal uses functions)", cB, "select 1 from invoices", 0);
 await expectRows("every finance change is in the audit log", null,
   "select distinct table_name from audit_log where table_name in ('invoices', 'invoice_lines', 'payments', 'payment_reviews', 'credit_notes')", 5);
+
+console.log("\nClient invoices and finance notifications (0022):");
+const CI = "select * from client_invoices($1)";
+await expectRows("client A sees its issued invoice only (no drafts, no void drafts, not client B's)", cA, "select invoice_number from client_invoices()", 1);
+await expectRows("…it is the right one", cA, "select 1 from client_invoices() where invoice_number = $1 and status = 'paid' and total = 2091.18 and balance_due = 0", 1, [n1]);
+await expectRows("client B sees only its own (overdue) invoice", cB, "select 1 from client_invoices() where invoice_number = $1 and status = 'overdue'", 1, [n2]);
+await expectRows("client B asking for client A's number gets nothing (same as unknown)", cB, CI, 0, [n1]);
+await expectRows("…and an unknown number gets nothing", cA, CI, 0, ["INV-1999-00001"]);
+await expectRows("lookup ignores case and spaces", cA, CI, 1, [` ${n1.toLowerCase()} `]);
+await expectRows("staff get nothing from the client functions (they use the tables)", finance, "select 1 from client_invoices()", 0);
+await expectRows("client A reads its invoice lines", cA, "select 1 from client_invoice_lines($1)", 2, [n1]);
+await expectRows("client B cannot read client A's lines", cB, "select 1 from client_invoice_lines($1)", 0, [n1]);
+await expectRows("payment history: 2 verified payments + 1 credit note; the rejected payment is not shown", cA,
+  "select 1 from client_invoice_activity($1)", 3, [n1]);
+await expectRows("…verified payments carry their receipt numbers", cA,
+  "select 1 from client_invoice_activity($1) where kind = 'payment' and verified and number like 'RCPT-%'", 2, [n1]);
+await expectRows("client B cannot read client A's payments", cB, "select 1 from client_invoice_activity($1)", 0, [n1]);
+await expectRows("client A opens its receipt", cA, "select 1 from client_receipt($1) where amount = 1000.00 and transaction_reference = 'TT-2026-001'", 1, [rc1]);
+await expectRows("client B cannot open client A's receipt", cB, "select 1 from client_receipt($1)", 0, [rc1]);
+const cols = (await db.query("select string_agg(array_to_string(proargnames, ','), ',') c from pg_proc where proname in ('client_invoices', 'client_invoice_lines', 'client_invoice_activity', 'client_receipt')")).rows[0].c ?? "";
+cols.includes("invoice_number") && !/reason|recorded_by|reviewed_by|,note\b|dispute|void|created_by/.test(cols) ? ok("client functions return no internal fields (reasons, staff, internal notes)") : bad("internal cols", cols);
+
+const notes = (sql, params) => db.query(sql, params).then((r) => r.rows);
+const issued = await notes("select recipient_id, payload from notifications where event_key = $1 and template_key = 'invoice.issued'", [`invoice:${d1}:issued`]);
+issued.length === 1 && issued[0].recipient_id === cA && issued[0].payload.invoice_number === n1 && issued[0].payload.total === "2091.18"
+  && /^\d{4}-\d{2}-\d{2}$/.test(issued[0].payload.due_date ?? "") && issued[0].payload.balance_due === "2091.18"
+  ? ok("invoice issued → client A notified once: number, total and balance as exact text, due date")
+  : bad("invoice.issued", JSON.stringify(issued));
+const ver = await notes("select recipient_id, payload from notifications where event_key = $1", [`payment:${p1}:verified`]);
+ver.length === 1 && ver[0].recipient_id === cA && ver[0].payload.amount === "1000.00" && ver[0].payload.balance_due === "1091.18"
+  && ver[0].payload.receipt_number === rc1 && ver[0].payload.transaction_reference === "TT-2026-001"
+  ? ok("payment verified → amount, reference, balance AFTER the payment (1091.18), receipt number")
+  : bad("payment.verified", JSON.stringify(ver));
+await expectRows("a rejected payment sends nothing", null, "select 1 from notifications where event_key = $1", 0, [`payment:${p2}:verified`]);
+await expectRows("client B was not told about client A's invoice; no staff got client messages", null,
+  "select 1 from notifications n join profiles p on p.id = n.recipient_id where n.template_key in ('invoice.issued', 'payment.verified') and (p.organization_id = $1 or p.role <> 'client') and n.shipment_id = $2", 0, [B, sT]);
+await expectRows("drafts and void drafts notify nobody", null, "select 1 from notifications where event_key = $1", 0, [`invoice:${r3}:issued`]);
+await expectRows("client B notified of its own invoice", null, "select 1 from notifications where event_key = $1 and recipient_id = $2", 1, [`invoice:${d2}:issued`, cB]);
 
 }
 

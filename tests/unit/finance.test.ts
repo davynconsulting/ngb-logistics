@@ -103,3 +103,21 @@ describe("finance form validation", () => {
     expect(issueInvoiceSchema.safeParse({ issueDate: "", dueDate: "" }).success).toBe(true);
   });
 });
+
+describe("client balance per currency", async () => {
+  const { owedByCurrency } = await import("@/lib/domain/client-finance");
+  it("sums open invoices per currency only, exactly, with overdue separately", () => {
+    const r = owedByCurrency([
+      { status: "issued", currency: "USD", balance_due: "0.10" },
+      { status: "overdue", currency: "USD", balance_due: "0.20" },
+      { status: "partially_paid", currency: "RWF", balance_due: "150000.00" },
+      { status: "paid", currency: "USD", balance_due: "0.00" },
+      { status: "void", currency: "KES", balance_due: "0.00" },
+      { status: "disputed", currency: "RWF", balance_due: "50000.50" },
+    ]);
+    expect(r).toEqual([
+      { currency: "RWF", owed: "200000.50", overdue: "0.00", count: 2 },
+      { currency: "USD", owed: "0.30", overdue: "0.20", count: 2 }, // 0.1 + 0.2 without float error
+    ]);
+  });
+});

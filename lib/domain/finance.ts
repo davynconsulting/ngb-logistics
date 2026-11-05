@@ -125,3 +125,23 @@ export function filterStatuses(f: InvoiceFilter): InvoiceStatus[] | null {
 export function isPositiveAmount(v: string): boolean {
   return PRICE.test(v) && new D(v).gt(0);
 }
+
+/**
+ * numeric(14,2) from PostgREST (a JSON number) → "1234.50". Exact: numeric(14,2)
+ * holds at most 10^14 cents, well below 2^53, so the nearest double always
+ * prints back to the same 2 decimals. Use only at the data-access boundary.
+ */
+export function moneyText(v: number | string | null | undefined): string {
+  return v == null ? "0.00" : typeof v === "string" ? v : v.toFixed(2);
+}
+
+/** Client-facing status words: "disputed" reads as under review, "void" as cancelled. */
+export const CLIENT_INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {
+  draft: "Draft",
+  issued: "Unpaid",
+  partially_paid: "Partly paid",
+  paid: "Paid",
+  overdue: "Overdue",
+  disputed: "Under review",
+  void: "Cancelled",
+};

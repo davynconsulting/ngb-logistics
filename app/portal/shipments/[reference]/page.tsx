@@ -13,6 +13,8 @@ import { PageHeader } from "@/components/layout/page-header";
 import { ShipmentStatusBadge } from "@/components/shipments/status-badge";
 import { Journey } from "@/components/portal/journey";
 import { ClientDocuments } from "@/components/portal/client-documents";
+import { InvoiceCard } from "@/components/portal/invoice-card";
+import { listClientInvoices } from "@/lib/dal/client-finance";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export const metadata: Metadata = { title: "Shipment" };
@@ -42,6 +44,7 @@ async function Shipment({ params }: Pick<PageProps<"/portal/shipments/[reference
   const s = /^[A-Z0-9-]{3,40}$/i.test(ref) ? await getClientShipment(ref) : null;
   if (!s) notFound();
   const tz = s.client?.timezone ?? "Africa/Kigali";
+  const invoices = (await listClientInvoices()).filter((i) => i.shipment_reference === s.shipment_reference);
 
   return (
     <div className="flex flex-col gap-5">
@@ -119,6 +122,12 @@ async function Shipment({ params }: Pick<PageProps<"/portal/shipments/[reference
       <Section title="Documents" id="documents">
         <ClientDocuments s={s} timeZone={tz} canUpload={!["operationally_complete", "closed"].includes(s.overall_status)} />
       </Section>
+
+      {invoices.length > 0 && (
+        <Section title="Invoices">
+          <ul className="-mx-4 -my-2 flex flex-col divide-y sm:-mx-6">{invoices.map((i) => <InvoiceCard key={i.invoice_number} i={i} />)}</ul>
+        </Section>
+      )}
 
       <Section title="Details">
         <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">

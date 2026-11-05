@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { DOC_LABELS, renderNotification } from "@/supabase/functions/_shared/notify/templates.ts";
+import { DOC_LABELS, formatDay, formatMoneyText, renderNotification } from "@/supabase/functions/_shared/notify/templates.ts";
 import { DOCUMENT_TYPE_LABELS } from "@/lib/domain/documents";
 
 /** Every template key the migrations create, so a new rule without a text fails here. */
@@ -44,6 +44,33 @@ describe("notification templates", () => {
     expect(r.title).toBe("NGB-2026-00012: driver report");
     expect(r.body).toBe("Truck RAD 123 B: Flat tyre near Kayonza");
     expect(r.url).toBe(`/admin/shipments/${sample.shipment_id}`);
+  });
+
+  it("invoice issued: number, amount, due date and payment instructions; links to the portal invoice", () => {
+    const r = renderNotification({ template_key: "invoice.issued", payload: { ...sample, invoice_number: "INV-2026-00007",
+      total: "2878.49", balance_due: "2878.49", currency: "USD", due_date: "2026-12-05",
+      payment_instructions: "Bank of Kigali (fictional), account 000-111-222" } });
+    expect(r.title).toBe("Invoice INV-2026-00007");
+    expect(r.body).toBe("NGB-2026-00012: invoice for 2,878.49 USD, due 5 Dec 2026. How to pay: Bank of Kigali (fictional), account 000-111-222");
+    expect(r.url).toBe("/portal/invoices/INV-2026-00007");
+  });
+
+  it("payment verified: amount, reference, remaining balance and the receipt link", () => {
+    const base = { ...sample, invoice_number: "INV-2026-00007", currency: "RWF", amount: "1500000.00", transaction_reference: "MM-889", receipt_number: "RCPT-2026-00003" };
+    const r = renderNotification({ template_key: "payment.verified", payload: { ...base, balance_due: "250000.50" } });
+    expect(r.title).toBe("INV-2026-00007: payment received");
+    expect(r.body).toBe("We received 1,500,000.00 RWF (ref MM-889). Remaining balance: 250,000.50 RWF. Receipt RCPT-2026-00003.");
+    expect(r.url).toBe("/portal/receipts/RCPT-2026-00003");
+    expect(renderNotification({ template_key: "payment.verified", payload: { ...base, balance_due: "0.00" } }).body).toContain("paid in full");
+  });
+
+  it("money and calendar-day text without floats or time-zone shifts", () => {
+    expect(formatMoneyText("1234567.5", "KES")).toBe("1,234,567.50 KES");
+    expect(formatMoneyText("0.10", "USD")).toBe("0.10 USD");
+    expect(formatMoneyText("12.345", "USD")).toBeNull();
+    expect(formatMoneyText(1234.5, "USD")).toBeNull(); // numbers are refused: amounts travel as text
+    expect(formatDay("2026-01-31")).toBe("31 Jan 2026");
+    expect(formatDay("2026-13-01")).toBeNull();
   });
 
   it("formats times in the client's time zone", () => {

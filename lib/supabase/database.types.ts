@@ -2110,6 +2110,68 @@ export type Database = {
           whatsapp_phone: string
         }[]
       }
+      client_invoice_activity: {
+        Args: { p_invoice_number: string }
+        Returns: {
+          amount: number
+          kind: string
+          method: Database["public"]["Enums"]["payment_method"]
+          number: string
+          occurred_at: string
+          transaction_reference: string
+          verified: boolean
+        }[]
+      }
+      client_invoice_lines: {
+        Args: { p_invoice_number: string }
+        Returns: {
+          amount: number
+          description: string
+          line_no: number
+          quantity: number
+          tax_amount: number
+          tax_rate: number
+          unit_price: number
+        }[]
+      }
+      client_invoices: {
+        Args: { p_invoice_number?: string }
+        Returns: {
+          amount_credited: number
+          amount_paid: number
+          awaiting_verification: number
+          balance_due: number
+          client_note: string
+          currency: string
+          due_date: string
+          invoice_number: string
+          issue_date: string
+          payment_instructions: string
+          shipment_reference: string
+          status: Database["public"]["Enums"]["invoice_status"]
+          subtotal: number
+          tax_total: number
+          total: number
+        }[]
+      }
+      client_receipt: {
+        Args: { p_receipt_number: string }
+        Returns: {
+          amount: number
+          balance_due: number
+          client_name: string
+          client_tax_id: string
+          currency: string
+          invoice_number: string
+          invoice_total: number
+          method: Database["public"]["Enums"]["payment_method"]
+          paid_at: string
+          receipt_number: string
+          shipment_reference: string
+          transaction_reference: string
+          verified_at: string
+        }[]
+      }
       client_shipment_alerts: {
         Args: { p_shipment_id: string }
         Returns: {

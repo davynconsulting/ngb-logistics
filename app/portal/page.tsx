@@ -4,6 +4,9 @@ import { Suspense } from "react";
 import { AlertTriangle, ChevronRight } from "lucide-react";
 import { requireClient } from "@/lib/dal/session";
 import { getOrgTimezone, getPortalDashboard } from "@/lib/dal/portal";
+import { listClientInvoices } from "@/lib/dal/client-finance";
+import { owedByCurrency } from "@/lib/domain/client-finance";
+import { formatAmount } from "@/lib/domain/finance";
 import { DOCUMENT_TYPE_LABELS } from "@/lib/domain/documents";
 import { formatDate } from "@/lib/format";
 import { ShipmentCard } from "@/components/portal/shipment-card";
@@ -25,7 +28,9 @@ export default function PortalHomePage() {
 
 async function Dashboard() {
   const user = await requireClient();
-  const [d, tz] = await Promise.all([getPortalDashboard(), getOrgTimezone(user.organizationId)]);
+  const [d, tz, invoices] = await Promise.all([getPortalDashboard(), getOrgTimezone(user.organizationId), listClientInvoices()]);
+  const owed = owedByCurrency(invoices);
+  const overdue = owed.some((o) => o.overdue !== "0.00");
   const inTransit = d.shipments.filter((s) => ["truck_assigned", "loading", "loaded", "in_transit", "arrived"].includes(s.overall_status)).length;
   const tiles = [
     { label: "Active shipments", value: d.shipments.length, href: "/portal/shipments" },
@@ -33,6 +38,8 @@ async function Dashboard() {
     { label: "Need your action", value: d.actions.length, warn: d.actions.length > 0, href: d.actions.length ? "#actions" : undefined },
     { label: "Unread", value: d.unread, href: "/portal/notifications" },
   ];
+  // amounts per currency, never added together
+  const balance = owed.length ? owed.map((o) => formatAmount(o.owed, o.currency)).join(" · ") : null;
 
   return (
     <>
@@ -47,6 +54,16 @@ async function Dashboard() {
           </div>
         ))}
       </dl>
+
+      {balance && (
+        <Link href="/portal/invoices" className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card p-4 hover:bg-muted/50 ${overdue ? "border-destructive/50" : ""}`}>
+          <span className="text-sm">
+            <span className="block text-xs text-muted-foreground">Balance to pay{overdue ? " · some invoices are overdue" : ""}</span>
+            <span className="font-semibold tabular-nums break-words">{balance}</span>
+          </span>
+          <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+        </Link>
+      )}
 
       {d.actions.length > 0 && (
         <section id="actions" className="flex flex-col gap-3">
