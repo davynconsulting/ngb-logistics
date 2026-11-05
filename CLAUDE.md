@@ -78,6 +78,14 @@ Don't generate the whole app in one go. **Don't make destructive database change
   - Run the sender locally against dev with `npm run notify:run`.
   - `node scripts/gen-notify-keys.mts` adds the VAPID keys and `NOTIFY_SENDER_SECRET` to `.env.local` if they are missing, and prints names only.
   - `tsconfig.json` excludes `supabase/functions/*/index.ts` (Deno entry points). Those are checked by `tsconfig.functions.json` as part of `npm run typecheck`.
+- **PWA:** the manifest is `app/manifest.ts` (`start_url` is `/portal`; the proxy sends staff on to `/admin`). Icons come from `node scripts/gen-icons.mts`, and the outputs are committed. The service worker is `public/sw.js`, with offline page `public/offline.html`.
+  - The service worker caches **only** the offline page and its icon. Never cache pages or API data there: they hold per-user data, and phones may be shared.
+  - Notification links are restricted to same-origin paths.
+  - Devices register through `registerPushDevice` → `register_push_subscription()` (0018). A device signed in by a new user moves to that user, with at most 10 devices per user.
+  - Sign-out sends the device's endpoint, so its subscription is deleted. The service worker renews rotated subscriptions via `POST /api/push/renew` (same origin only).
+  - Only known push-service hosts are accepted (`isAllowedPushEndpoint`).
+  - iOS needs "Add to Home Screen" (16.4+) before push works; `PushToggle` explains this.
+  - Security headers are set in `next.config.ts`. A full script CSP with nonces is planned for Sprint 5.
 - **Client reads (0015):** clients can't read `milestone_events` or `transport_assignments` directly, because they carry internal reasons. Use `client_timeline()`, `client_transport()` and `client_shipment_alerts()`.
   - Driver contact is shown only if `organizations.show_driver_contact` AND `driver_contacts.share_with_client`.
 - Forms that submit manually (keeping values on a refusal, converting local times to ISO) use `components/forms/use-form-action.ts`. Don't call `Date.now()` while rendering (lint purity rule): compute time-based flags in the DAL.

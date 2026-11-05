@@ -81,6 +81,6 @@ export const config = {
   matcher: [
     // Everything except static files, images, the service worker/manifest,
     // public icons and background-job/webhook endpoints (they use their own auth)
-    "/((?!_next/static|_next/image|favicon.ico|sw.js|manifest.webmanifest|icons/|api/jobs/|api/webhooks/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|sw.js|offline.html|manifest.webmanifest|icons/|api/jobs/|api/webhooks/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

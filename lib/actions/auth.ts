@@ -72,8 +72,16 @@ export async function signIn(_prev: FormState, formData: FormData): Promise<Form
   redirect(safeNextPath(parsed.data.next, profile.role) ?? homePathFor(profile.role));
 }
 
-export async function signOut(): Promise<void> {
+/**
+ * Sign out. The form also sends this device's push endpoint (if any) so the
+ * next person using the phone does not receive this user's notifications.
+ */
+export async function signOut(formData?: FormData): Promise<void> {
   const supabase = await createClient();
+  const endpoint = formData?.get("push_endpoint");
+  if (typeof endpoint === "string" && /^https:\/\//.test(endpoint) && endpoint.length <= 1000) {
+    await supabase.from("push_subscriptions").delete().eq("endpoint", endpoint); // RLS: own rows only
+  }
   await supabase.auth.signOut();
   redirect("/login?signed_out=1");
 }

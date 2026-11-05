@@ -867,6 +867,23 @@ await expectError("users cannot claim, paused or not", ops, "select * from claim
 await expectOk("admin resumes sending", admin, "update app_settings set value = 'false' where key = 'notify.sender_paused'");
 await expectRows("the change is audited", null, "select 1 from audit_log where table_name = 'app_settings' and action = 'UPDATE' and new_data ->> 'key' = 'notify.sender_paused'", 2);
 
+console.log("\nPush device registration (0018):");
+const dev = { endpoint: "https://fcm.googleapis.com/fcm/send/shared-phone-1", p256dh: "C".repeat(87), auth: "D".repeat(22) };
+const REG = "select register_push_subscription($1, $2, $3, $4)";
+await expectOk("client A registers this phone", cA, REG, [dev.endpoint, dev.p256dh, dev.auth, "Android Chrome"]);
+await expectOk("…registering again is harmless", cA, REG, [dev.endpoint, dev.p256dh, dev.auth, "Android Chrome"]);
+await expectRows("one row for the device", null, "select 1 from push_subscriptions where endpoint = $1", 1, [dev.endpoint]);
+await expectOk("client B signs in on the same phone and turns push on", cB, REG, [dev.endpoint, "E".repeat(87), "F".repeat(22), "Android Chrome"]);
+await expectRows("the device moved to client B (A no longer gets B's phone)", null,
+  "select 1 from push_subscriptions where endpoint = $1 and user_id = $2 and p256dh = $3", 1, [dev.endpoint, cB, "E".repeat(87)]);
+await expectRows("client A no longer sees it", cA, "select 1 from push_subscriptions where endpoint = $1", 0, [dev.endpoint]);
+await expectRows("client A cannot delete B's device (sign-out of A)", cA, "delete from push_subscriptions where endpoint = $1 returning 1", 0, [dev.endpoint]);
+await expectRows("client B removes it on sign-out", cB, "delete from push_subscriptions where endpoint = $1 returning 1", 1, [dev.endpoint]);
+await expectError("anonymous cannot register", "anon", REG, /permission denied/, [dev.endpoint, dev.p256dh, dev.auth, null]);
+await expectError("plain http refused", ops, REG, /check constraint/, ["http://fcm.googleapis.com/x", dev.p256dh, dev.auth, null]);
+for (let i = 0; i < 11; i++) await as(ops, REG, [`https://fcm.googleapis.com/fcm/send/ops-${i}`, dev.p256dh, dev.auth, null]);
+await expectRows("at most 10 devices per user (oldest dropped)", null, "select 1 from push_subscriptions where user_id = $1", 10, [ops]);
+
 console.log("\nProfile sync:");
 await expectRows("user with no profile sees no shipments", nobody, "select id from shipments", 0);
 await db.query("update auth.users set raw_app_meta_data = raw_app_meta_data || $2::jsonb where id = $1",

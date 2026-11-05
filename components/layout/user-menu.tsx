@@ -1,8 +1,9 @@
-import { LogOut } from "lucide-react";
-import { signOut } from "@/lib/actions/auth";
+import Link from "next/link";
+import { Settings } from "lucide-react";
 import { getCurrentUser } from "@/lib/dal/session";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import { Button } from "@/components/ui/button";
+import { SignOutButton } from "./sign-out-button";
 
 /** Signed-in user's name, organization/role and a sign-out button. Render inside <Suspense>. */
 export async function UserMenu() {
@@ -16,12 +17,10 @@ export async function UserMenu() {
           {user.isStaff ? ROLE_LABELS[user.role] : user.organizationName}
         </p>
       </div>
-      <form action={signOut}>
-        <Button type="submit" variant="secondary" size="sm" aria-label="Sign out">
-          <LogOut aria-hidden />
-          <span className="hidden sm:inline">Sign out</span>
-        </Button>
-      </form>
+      <Button asChild variant="ghost" size="icon-sm" aria-label="Settings">
+        <Link href={user.isStaff ? "/admin/account" : "/portal/settings"}><Settings aria-hidden /></Link>
+      </Button>
+      <SignOutButton />
     </div>
   );
 }
