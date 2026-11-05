@@ -1,0 +1,85 @@
+@AGENTS.md
+
+# NGB LOGISTICS: Cargo Tracking PWA
+
+Act as a senior full-stack architect and developer building the NGB LOGISTICS Cargo Tracking Progressive Web App.
+
+The authoritative functional reference is `reference/NGB_LOGISTICS_Cargo_Tracking_Functional_Specification_v1.pdf` (FRS v1.0). The approved technical plan (architecture, schema, sprints) is in `~/.claude/plans/projects-ngb-logistics-gentle-simon.md`.
+
+## Stack
+Next.js 16 (App Router) · TypeScript · Tailwind CSS 4 · shadcn/ui · Supabase (Postgres, Auth, Storage) · PWA · Vercel. Package manager: **npm**.
+
+## Two experiences, one secure backend
+1. **Client portal** (`/portal`): mobile-first. Covers shipment tracking, documents, ETA, invoices, payments and notifications.
+2. **Admin platform** (`/admin`): shipment registration, milestones, containers, transport, customs, finance, exceptions and reporting.
+
+## Development principles
+- Follow the functional specification. Build incrementally through the five sprints.
+- Use reusable components and keep the architecture maintainable.
+- Enforce permissions and organization-level isolation **on the server and in the database**. Use Supabase Row Level Security on every table.
+- Keep a complete, append-only audit trail for operational events. Corrections append new records and never overwrite.
+- Never expose the service-role key or other secrets to frontend code. It lives only in `lib/supabase/admin.ts` (`server-only`) and is never prefixed `NEXT_PUBLIC_`.
+- Do money with decimals: `numeric(14,2)` in Postgres, strings plus `decimal.js` in TypeScript (`lib/domain/money.ts`). Never use JS floats. Never mix currencies.
+- Validate every shipment status transition, in the database (RPC functions) and not just in the UI.
+- Make everything responsive and smartphone-friendly. Avoid horizontal scrolling in primary forms.
+- Use realistic but **fictional** test data.
+- Phase 1 has no live GPS and no external logistics integrations.
+
+## Working method (for every major feature)
+1. Explain what will be built.
+2. Identify the database changes.
+3. Explain the security implications.
+4. Break the work into tasks.
+5. Implement.
+6. Run the tests and fix errors.
+7. Summarize what is done and what remains.
+
+Don't generate the whole app in one go. **Don't make destructive database changes or deploy anything without the user's approval.** Show migration SQL before pushing it to Supabase.
+
+## Project facts and gotchas
+- **Supabase:** there is no local Docker. A hosted **dev** project, `ngb-logistics-dev` (ref `idyydcuihxkyitylkugo`), is the only database. Its credentials are in `.env.local` (gitignored). Never print or echo the secret values. Never run `supabase db reset` against it without explicit approval.
+- **Next 16:** the request interceptor is `proxy.ts` (middleware is deprecated). Read `node_modules/next/dist/docs/` before using unfamiliar APIs.
+- **Cache Components is on:** reading `cookies()` (the session) must happen inside `<Suspense>`. Don't read it at the top level of a layout. `lib/supabase/server.ts` calls `connection()` first, because the Supabase client reads the clock, which Next forbids during prerender.
+- **Auth:** `proxy.ts` handles routing only. Pages must call `requireClient()` / `requireStaff()` from `lib/dal/session.ts`, and RLS is the real guard. Never use `getSession()` for trust decisions; use `getClaims()`.
+- **Never put tenant data in a server-side `'use cache'` or `'use cache: remote'`**, or one client could see another's data. Use `'use cache: private'` or no caching.
+- **Tailwind** loads through `@tailwindcss/turbopack` in `next.config.ts`, not PostCSS.
+- **This Mac runs macOS 12.** Playwright's browsers (Chromium, Firefox and WebKit) don't support it, so `npm run test:e2e` can't run locally. Run e2e tests in CI (Linux) instead. Locally, check pages with `next start` + `curl`.
+- **Role-blocked and not-found pages return HTTP 200.** `redirect()` and `notFound()` run inside `<Suspense>` after streaming starts, so the status stays 200. The redirect happens in the browser, and the not-found page adds `noindex`. Tests should check the page content (no protected data, "could not be found") rather than the status code.
+- **Money and other `numeric` columns:** send the validated decimal *string* to Supabase, never `Number(...)`. The generated types say `number`, so cast with `as unknown as number` and leave a comment.
+- **New shipments are registered only through the `register_shipment` RPC** (one transaction, starts as draft). Duplicate BLs (case-insensitive) and containers already on an open shipment are rejected in the database.
+- **Users can't set `organizations.is_internal`** (it isn't in the column grants), and an insert that includes it fails with "permission denied".
+- **Documents:** files go straight from the browser to the private `shipment-documents` bucket, never through our server, because Vercel caps request bodies at about 4.5 MB.
+  - The steps are `prepareDocumentUpload` (the server picks the path and returns a signed upload token, created as the user), then `uploadToSignedUrl` in the browser, then `finalizeDocumentUpload` (the `record_document` RPC).
+  - Size and file type always come from `storage.objects.metadata`, set by the `documents_file_facts` trigger.
+  - Verify and reject only through the `review_document` RPC.
+  - The checklist and `shipments.doc_status` are kept up to date by triggers. Never set them by hand.
+  - Downloads go through `/documents/{id}`, which creates a 60-second signed URL as the user.
+- **Testing server actions over HTTP:** POST to the page with a `Next-Action: <id>` header. Get the ID from `.next/server/server-reference-manifest.json`. Encode the arguments with React's `encodeReply` from `next/dist/compiled/react-server-dom-turbopack/client.node.js`. Field order matters when an action takes a FormData, so don't hand-build the encoding.
+- **Rendered HTML contains `<!-- -->`** between adjacent text nodes (e.g. `Earlier versions (<!-- -->1<!-- -->)`). Strip these before matching text in tests.
+- **Forms** use shadcn's `field` component with react-hook-form + zod, not the older `form` component.
+
+## Commands
+- `npm run dev` / `npm run build` / `npm run lint` / `npm run typecheck`
+- `npm test` (Vitest unit tests in `tests/unit`)
+- `npm run test:e2e`: Playwright, mobile and desktop, in `tests/e2e`.
+  - Covers login and routing, shipment registration, and document upload/verify/download.
+  - It can't run on this Mac (macOS 12), so run it in CI. It needs `E2E_PASSWORD` (the seeded password) and the `NEXT_PUBLIC_SUPABASE_*` variables.
+  - Locally the password is read from `.env.local`.
+- `npm run test:db`: applies every migration to an in-memory Postgres (PGlite, no Docker, no network) and checks RLS, grants, RPCs and triggers as each role (`tests/db/rls.check.mjs`).
+  - Add a section there for every new migration.
+  - This harness stands in for pgTAP, which would need local Docker.
+- `npm run test:live`: real flows against the **dev** project and a local production server.
+  - First run `npm run build && npx next start -p 3123`.
+  - Suites are in `tests/live`: auth/routing, admin flows, documents.
+  - It calls the real server actions over HTTP and adds fictional test data each run.
+  - Supabase allows about 30 sign-ins per 5 minutes per IP, so each user signs in once per run. Don't run it twice back-to-back.
+- Migrations live in `supabase/migrations/`. Supabase CLI v3 targets a local database by default, so always pass **`--remote`**:
+  - `npx supabase db push --remote --dry-run` (show the dry run to the user first)
+  - `npx supabase db push --remote` (only after the user approves)
+  - `npx supabase migration list --remote` and `npx supabase db lint --remote --level warning`
+- `npm run db:seed` loads fictional dev data (`scripts/seed-dev.mts`). It's re-runnable, only adds, and refuses to run against any project other than the dev one.
+  - Test users: `<role>@ngb.example` (e.g. `admin@`, `ops.manager@`, `doc.officer@`, `clearing.agent@`, `transport@`, `driver@`, `finance@`), plus 2 per client (e.g. `aline@akagera.example`, `jean@kivuhardware.example`).
+  - All test users share the password `SEED_USER_PASSWORD` from `.env.local`.
+- **Users get their role and organization from `app_metadata`** (service role only), which the `private.sync_user_profile` trigger copies to `profiles`. Never trust `user_metadata`, because users can edit it.
+- `npm run db:types` regenerates `lib/supabase/database.types.ts` after every migration.
+- The CLI is already logged in and linked. Interactive commands (`supabase login`, `link`) must be run by the user in Terminal.app, because the in-chat `!` shell isn't a TTY.
