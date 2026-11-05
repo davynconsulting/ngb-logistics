@@ -304,16 +304,19 @@ export type Database = {
           assignment_id: string
           driver_name: string
           driver_phone: string | null
+          share_with_client: boolean
         }
         Insert: {
           assignment_id: string
           driver_name: string
           driver_phone?: string | null
+          share_with_client?: boolean
         }
         Update: {
           assignment_id?: string
           driver_name?: string
           driver_phone?: string | null
+          share_with_client?: boolean
         }
         Relationships: [
           {
@@ -821,6 +824,103 @@ export type Database = {
           },
         ]
       }
+      notification_deliveries: {
+        Row: {
+          attempt_count: number
+          channel: Database["public"]["Enums"]["notification_channel"]
+          created_at: string
+          dedup_key: string
+          error_code: string | null
+          error_detail: string | null
+          id: string
+          last_attempt_at: string | null
+          locked_until: string | null
+          next_attempt_at: string
+          notification_id: string
+          provider_message_id: string | null
+          sent_at: string | null
+          state: Database["public"]["Enums"]["delivery_state"]
+        }
+        Insert: {
+          attempt_count?: number
+          channel: Database["public"]["Enums"]["notification_channel"]
+          created_at?: string
+          dedup_key: string
+          error_code?: string | null
+          error_detail?: string | null
+          id?: string
+          last_attempt_at?: string | null
+          locked_until?: string | null
+          next_attempt_at?: string
+          notification_id: string
+          provider_message_id?: string | null
+          sent_at?: string | null
+          state?: Database["public"]["Enums"]["delivery_state"]
+        }
+        Update: {
+          attempt_count?: number
+          channel?: Database["public"]["Enums"]["notification_channel"]
+          created_at?: string
+          dedup_key?: string
+          error_code?: string | null
+          error_detail?: string | null
+          id?: string
+          last_attempt_at?: string | null
+          locked_until?: string | null
+          next_attempt_at?: string
+          notification_id?: string
+          provider_message_id?: string | null
+          sent_at?: string | null
+          state?: Database["public"]["Enums"]["delivery_state"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_deliveries_notification_id_fkey"
+            columns: ["notification_id"]
+            isOneToOne: false
+            referencedRelation: "notifications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_delivery_attempts: {
+        Row: {
+          attempted_at: string
+          delivery_id: string
+          error_code: string | null
+          error_detail: string | null
+          id: string
+          ok: boolean
+          provider_message_id: string | null
+        }
+        Insert: {
+          attempted_at?: string
+          delivery_id: string
+          error_code?: string | null
+          error_detail?: string | null
+          id?: string
+          ok: boolean
+          provider_message_id?: string | null
+        }
+        Update: {
+          attempted_at?: string
+          delivery_id?: string
+          error_code?: string | null
+          error_detail?: string | null
+          id?: string
+          ok?: boolean
+          provider_message_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_delivery_attempts_delivery_id_fkey"
+            columns: ["delivery_id"]
+            isOneToOne: false
+            referencedRelation: "notification_deliveries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_preferences: {
         Row: {
           consent_at: string | null
@@ -859,6 +959,88 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_rules: {
+        Row: {
+          audience: Database["public"]["Enums"]["notification_audience"]
+          description: string
+          push: boolean
+          template_key: string
+          whatsapp: boolean
+        }
+        Insert: {
+          audience: Database["public"]["Enums"]["notification_audience"]
+          description: string
+          push: boolean
+          template_key: string
+          whatsapp: boolean
+        }
+        Update: {
+          audience?: Database["public"]["Enums"]["notification_audience"]
+          description?: string
+          push?: boolean
+          template_key?: string
+          whatsapp?: boolean
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          audience: Database["public"]["Enums"]["notification_audience"]
+          created_at: string
+          event_key: string
+          id: string
+          payload: Json
+          read_at: string | null
+          recipient_id: string
+          shipment_id: string | null
+          template_key: string
+        }
+        Insert: {
+          audience: Database["public"]["Enums"]["notification_audience"]
+          created_at?: string
+          event_key: string
+          id?: string
+          payload?: Json
+          read_at?: string | null
+          recipient_id: string
+          shipment_id?: string | null
+          template_key: string
+        }
+        Update: {
+          audience?: Database["public"]["Enums"]["notification_audience"]
+          created_at?: string
+          event_key?: string
+          id?: string
+          payload?: Json
+          read_at?: string | null
+          recipient_id?: string
+          shipment_id?: string | null
+          template_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_template_key_fkey"
+            columns: ["template_key"]
+            isOneToOne: false
+            referencedRelation: "notification_rules"
+            referencedColumns: ["template_key"]
           },
         ]
       }
@@ -1006,6 +1188,50 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      push_subscriptions: {
+        Row: {
+          auth: string
+          created_at: string
+          endpoint: string
+          failure_count: number
+          id: string
+          last_success_at: string | null
+          p256dh: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          auth: string
+          created_at?: string
+          endpoint: string
+          failure_count?: number
+          id?: string
+          last_success_at?: string | null
+          p256dh: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Update: {
+          auth?: string
+          created_at?: string
+          endpoint?: string
+          failure_count?: number
+          id?: string
+          last_success_at?: string | null
+          p256dh?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_subscriptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1518,6 +1744,76 @@ export type Database = {
         Args: { p_assignment_id: string; p_reason: string }
         Returns: undefined
       }
+      claim_notification_deliveries: {
+        Args: { p_ignore_pause?: boolean; p_limit?: number }
+        Returns: {
+          attempt_count: number
+          channel: Database["public"]["Enums"]["notification_channel"]
+          delivery_id: string
+          locale: string
+          notification_id: string
+          payload: Json
+          recipient_id: string
+          shipment_id: string
+          subscriptions: Json
+          template_key: string
+          timezone: string
+          whatsapp_phone: string
+        }[]
+      }
+      client_shipment_alerts: {
+        Args: { p_shipment_id: string }
+        Returns: {
+          alert_id: string
+          container_number: string
+          exception_type: Database["public"]["Enums"]["exception_type"]
+          message: string
+          opened_at: string
+        }[]
+      }
+      client_timeline: {
+        Args: { p_shipment_id: string }
+        Returns: {
+          batch_id: string
+          containers: string[]
+          event_at: string
+          is_corrected: boolean
+          label: string
+          location: string
+          milestone_type: Database["public"]["Enums"]["milestone_type"]
+          public_note: string
+        }[]
+      }
+      client_transport: {
+        Args: { p_shipment_id: string }
+        Returns: {
+          actual_loading_at: string
+          assignment_id: string
+          border_crossing: string
+          containers: string[]
+          driver_name: string
+          driver_phone: string
+          planned_loading_at: string
+          route_name: string
+          trailer_registration: string
+          transit_estimate_hours: number
+          transporter_name: string
+          truck_registration: string
+        }[]
+      }
+      complete_notification_delivery: {
+        Args: {
+          p_dead_endpoints?: string[]
+          p_delivery_id: string
+          p_error_code?: string
+          p_error_detail?: string
+          p_ok: boolean
+          p_permanent?: boolean
+          p_provider_message_id?: string
+          p_suppress?: boolean
+        }
+        Returns: undefined
+      }
       correct_milestone: {
         Args: {
           p_event_at?: string
@@ -1602,6 +1898,10 @@ export type Database = {
         Args: { p_exception_id: string; p_resolution: string }
         Returns: undefined
       }
+      retry_notification_delivery: {
+        Args: { p_delivery_id: string }
+        Returns: undefined
+      }
       review_document: {
         Args: {
           p_decision: Database["public"]["Enums"]["verification_status"]
@@ -1631,6 +1931,10 @@ export type Database = {
           escalated: number
           opened: number
         }[]
+      }
+      set_exception_client_message: {
+        Args: { p_exception_id: string; p_message: string; p_visible: boolean }
+        Returns: undefined
       }
       update_exception: {
         Args: {
@@ -1663,6 +1967,7 @@ export type Database = {
         | "duties_pending"
         | "released"
         | "on_hold"
+      delivery_state: "pending" | "sending" | "sent" | "failed" | "suppressed"
       delivery_status:
         | "pending"
         | "offloading"
@@ -1759,6 +2064,8 @@ export type Database = {
         | "customs_released"
         | "customs_on_hold"
         | "update"
+      notification_audience: "client" | "staff"
+      notification_channel: "push" | "whatsapp"
       notification_state: "pending" | "sent" | "failed" | "suppressed"
       return_status:
         | "not_due"
@@ -1947,6 +2254,7 @@ export const Constants = {
         "released",
         "on_hold",
       ],
+      delivery_state: ["pending", "sending", "sent", "failed", "suppressed"],
       delivery_status: [
         "pending",
         "offloading",
@@ -2051,6 +2359,8 @@ export const Constants = {
         "customs_on_hold",
         "update",
       ],
+      notification_audience: ["client", "staff"],
+      notification_channel: ["push", "whatsapp"],
       notification_state: ["pending", "sent", "failed", "suppressed"],
       return_status: [
         "not_due",

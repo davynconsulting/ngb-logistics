@@ -66,7 +66,10 @@ const { data: a1 } = await svc.from("transport_assignments").select("id, truck_r
 check("registration normalised; border from the route", a1?.truck_registration === truck && a1.border_crossing === "Rusumo", JSON.stringify(a1));
 check("container 1 → truck assigned", (await svc.from("containers").select("operational_status").eq("id", c1).single()).data.operational_status === "truck_assigned");
 check("client cannot read driver name/phone", ((await aline.api.from("driver_contacts").select("driver_phone")).data ?? []).length === 0);
-check("client sees the truck", ((await aline.api.from("transport_assignments").select("truck_registration").eq("shipment_id", shipId)).data ?? []).length === 1);
+const alineTrucks = (await aline.api.rpc("client_transport", { p_shipment_id: shipId })).data ?? [];
+check("client sees the truck (via client_transport)", alineTrucks.length === 1 && alineTrucks[0].truck_registration === truck, JSON.stringify(alineTrucks));
+check("…without the driver contact (policy off by default)", alineTrucks[0]?.driver_name == null && alineTrucks[0]?.driver_phone == null);
+check("client cannot read the raw assignment table", ((await aline.api.from("transport_assignments").select("id").eq("shipment_id", shipId)).data ?? []).length === 0);
 check("assigned driver now sees the shipment", ((await driver.api.from("shipments").select("id").eq("id", shipId)).data ?? []).length === 1);
 const again = await act(transport, "assignTransport", shipId, { container_ids: [c1], transporter: "Other (TEST)", truck: "T 999 ZZZ", transit_refs: "" });
 check("a second truck for the same container is refused", /already has a truck/.test(again?.error ?? ""), again?.error);

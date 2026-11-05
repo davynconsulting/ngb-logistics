@@ -65,6 +65,21 @@ Don't generate the whole app in one go. **Don't make destructive database change
   - `private.sla_scan()` runs every 15 minutes (pg_cron job `ngb-sla-scan`). Ops managers can also trigger it with `run_sla_scan()`.
   - Thresholds are in `sla_rules`. Clients have no access to exceptions until the portal view in Sprint 3.
   - `supabase db lint` reports "pg_temp.sla_now does not exist" for `sla_scan`. That's a false positive: the temp table is created at run time.
+- **Notifications (0014–0016):** database triggers queue notifications. Never insert into `notifications` or `notification_deliveries` from the app.
+  - The rules are in `notification_rules`: one row per template key, deciding push/WhatsApp.
+  - `private.enqueue_notification` sends client templates only to users of the shipment's client organization and staff templates only to staff. It deduplicates on (event, recipient, template) (AC-08).
+  - Push needs a `push_subscriptions` row. WhatsApp needs opt-in plus a phone number; `consent_at` is stamped by a trigger.
+- **Sender:** the `notify-sender` edge function runs shared code in `supabase/functions/_shared/notify/`.
+  - The code has no Deno or Node imports, only Web Crypto and fetch. Imports use `.ts` extensions. Next, Vitest and Node scripts import the same files.
+  - Web Push is implemented in `webpush.ts` (RFC 8291/8292) and checked against the RFC test vector. Push endpoints must be on known push-service hosts (SSRF guard).
+  - WhatsApp is **mock only** in Phase 1 (`WHATSAPP_PROVIDER=mock`; `WHATSAPP_MOCK_MODE=ok|transient|permanent` simulates outages).
+  - The database decides retries: backoff 1/5/15/60 min, then failed after 5 attempts or 24 h. Ops managers retry failed deliveries from `/admin/notifications`.
+  - pg_cron (`ngb-notify-sender`, every minute) and a statement trigger on new deliveries call the function through pg_net. The URL and secret come from Vault (`notify_sender_url`, `notify_sender_secret`); while they're unset, nothing is sent.
+  - Run the sender locally against dev with `npm run notify:run`.
+  - `node scripts/gen-notify-keys.mts` adds the VAPID keys and `NOTIFY_SENDER_SECRET` to `.env.local` if they are missing, and prints names only.
+  - `tsconfig.json` excludes `supabase/functions/*/index.ts` (Deno entry points). Those are checked by `tsconfig.functions.json` as part of `npm run typecheck`.
+- **Client reads (0015):** clients can't read `milestone_events` or `transport_assignments` directly, because they carry internal reasons. Use `client_timeline()`, `client_transport()` and `client_shipment_alerts()`.
+  - Driver contact is shown only if `organizations.show_driver_contact` AND `driver_contacts.share_with_client`.
 - Forms that submit manually (keeping values on a refusal, converting local times to ISO) use `components/forms/use-form-action.ts`. Don't call `Date.now()` while rendering (lint purity rule): compute time-based flags in the DAL.
 - **Testing server actions over HTTP:** POST to the page with a `Next-Action: <id>` header. Get the ID from `.next/server/server-reference-manifest.json`. Encode the arguments with React's `encodeReply` from `next/dist/compiled/react-server-dom-turbopack/client.node.js`. Field order matters when an action takes a FormData, so don't hand-build the encoding.
 - **Rendered HTML contains `<!-- -->`** between adjacent text nodes (e.g. `Earlier versions (<!-- -->1<!-- -->)`). Strip these before matching text in tests.
@@ -82,7 +97,7 @@ Don't generate the whole app in one go. **Don't make destructive database change
   - This harness stands in for pgTAP, which would need local Docker.
 - `npm run test:live`: real flows against the **dev** project and a local production server.
   - First run `npm run build && npx next start -p 3123`.
-  - Suites are in `tests/live`: auth/routing, admin flows, documents, milestones, operations (ETA/transport/exceptions).
+  - Suites are in `tests/live`: auth/routing, admin flows, documents, milestones, operations (ETA/transport/exceptions), notifications (push via a decrypting fake push service, mock WhatsApp, outage and retry).
   - It calls the real server actions over HTTP and adds fictional test data each run.
   - Supabase allows about 30 sign-ins per 5 minutes per IP, so each user signs in once per run. Don't run it twice back-to-back.
 - Migrations live in `supabase/migrations/`. Supabase CLI v3 targets a local database by default, so always pass **`--remote`**:

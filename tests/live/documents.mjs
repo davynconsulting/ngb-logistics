@@ -159,9 +159,9 @@ check("agent uploads a customs entry to an assigned shipment", ag3.fin?.ok === t
 const direct1 = await agent.api.storage.from(BUCKET).createSignedUploadUrl(`${unassigned.client_id}/${unassigned.id}/${crypto.randomUUID()}/x.pdf`);
 check("agent cannot get an upload token for an unassigned shipment directly", !!direct1.error, direct1.error?.message?.slice(0, 40));
 const direct2 = await aline.api.storage.from(BUCKET).createSignedUploadUrl(`${ship.client_id}/${ship.id}/${crypto.randomUUID()}/x.pdf`);
-check("client cannot get an upload token, even for its own shipment", !!direct2.error, direct2.error?.message?.slice(0, 40));
-const direct3 = await aline.api.storage.from(BUCKET).upload(`${ship.client_id}/${ship.id}/${crypto.randomUUID()}/x.pdf`, pdf("x"), { contentType: "application/pdf" });
-check("client cannot upload directly to storage", !!direct3.error, direct3.error?.message?.slice(0, 40));
+check("client can get an upload token for its own shipment (0015: commercial documents)", !direct2.error, direct2.error?.message?.slice(0, 60));
+const direct3 = await aline.api.storage.from(BUCKET).upload(`${crypto.randomUUID()}/${ship.id}/${crypto.randomUUID()}/x.pdf`, pdf("x"), { contentType: "application/pdf" });
+check("client cannot upload into another organization's folder", !!direct3.error, direct3.error?.message?.slice(0, 40));
 const clientAct = await action(aline, "prepareDocumentUpload", [{ ...base, size: 10 }], page);
 check("client calling the upload action is turned away", clientAct.value?.ok !== true, clientAct.status);
 const finAct = (await action(finance, "prepareDocumentUpload", [{ ...base, size: 10 }], page)).value;

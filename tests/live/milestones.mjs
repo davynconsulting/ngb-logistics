@@ -82,7 +82,8 @@ check("transport coordinator cannot record customs", /cannot record/.test(tc?.er
 // ---- visibility ----
 check("agent adds a staff-only update with an internal note",
   (await rec(agent, { milestone: "update", public_note: "Checking storage charges", internal_note: "Terminal asked for extra fee — query it", client_visible: "" }))?.ok);
-const alineEvents = (await aline.api.from("milestone_timeline").select("milestone_type").eq("shipment_id", ship.id)).data ?? [];
+const alineEvents = (await aline.api.rpc("client_timeline", { p_shipment_id: ship.id })).data ?? [];
+check("client cannot read the raw event table (internal reasons stay internal)", ((await aline.api.from("milestone_events").select("id").eq("shipment_id", ship.id)).data ?? []).length === 0);
 check("client sees client-visible milestones of its shipment", alineEvents.length >= 4, String(alineEvents.length));
 check("client does not see the staff-only update", !alineEvents.some((e) => e.milestone_type === "update"));
 check("client cannot read internal notes", ((await aline.api.from("milestone_internal_notes").select("id").eq("shipment_id", ship.id)).data ?? []).length === 0);

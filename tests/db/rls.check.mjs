@@ -227,8 +227,10 @@ await expectOk("doc officer uploads internal-only doc for A", doc, insDoc, [docI
 await expectOk("doc officer uploads BL for B", doc, insDoc, [docId3, sB.id, "bill_of_lading", pB1, "bl.pdf", true]);
 await expectError("storage path pointing at another client is rejected", doc, insDoc, /storage_path/,
   ["44444444-4444-4444-8444-444444444444", sA.id, "other", `${B}/${sA.id}/44444444-4444-4444-8444-444444444444/x.pdf`, "x.pdf", true]);
-await expectError("client cannot upload document rows", cA, insDoc, /row-level security/,
-  ["55555555-5555-4555-8555-555555555555", sA.id, "other", `${A}/${sA.id}/55555555-5555-4555-8555-555555555555/x.pdf`, "x.pdf", true]);
+await expectError("client cannot add a staff-only document type", cA, insDoc, /row-level security|not been uploaded/,
+  ["55555555-5555-4555-8555-555555555555", sA.id, "customs_entry", `${A}/${sA.id}/55555555-5555-4555-8555-555555555555/x.pdf`, "x.pdf", true]);
+await expectError("client cannot add a document to another client's shipment (no file hint)", cA, insDoc, /row-level security/,
+  ["55555555-5555-4555-8555-555555555556", sB.id, "packing_list", `${B}/${sB.id}/55555555-5555-4555-8555-555555555556/x.pdf`, "x.pdf", true]);
 await expectRows("client A sees only its client-visible document", cA, "select id from documents", 1);
 await expectRows("staff sees both A documents", doc, "select id from documents where shipment_id = $1", 2, [sA.id]);
 await expectRows("agent (assigned to A) sees A docs only", agent, "select id from documents", 2);
@@ -243,8 +245,8 @@ await expectOk("agent can upload into the assigned shipment's folder", agent,
   "insert into storage.objects (bucket_id, name) values ('shipment-documents', $1)", [`${A}/${sA.id}/66666666-6666-4666-8666-666666666666/pod.jpg`]);
 await expectError("upload with mismatched client folder is rejected", doc,
   "insert into storage.objects (bucket_id, name) values ('shipment-documents', $1)", /row-level security/, [`${B}/${sA.id}/x/y.pdf`]);
-await expectError("client cannot upload files", cA,
-  "insert into storage.objects (bucket_id, name) values ('shipment-documents', $1)", /row-level security/, [`${A}/${sA.id}/x/y.pdf`]);
+await expectError("client cannot upload into another client's folder", cA,
+  "insert into storage.objects (bucket_id, name) values ('shipment-documents', $1)", /row-level security/, [`${B}/${sB.id}/x/y.pdf`]);
 await expectOk("doc officer verifies a document (review_document)", doc, "select review_document($1, 'verified')", [docId1]);
 await expectError("verification cannot be written directly (no faked reviewer or time)", doc,
   "update documents set verification_status = 'verified', verified_by = $2, verified_at = now() where id = $1", /permission denied/, [docId3, admin]);
@@ -314,7 +316,7 @@ await expectRows("checklist: invoice → received", null, "select 1 from documen
 await expectRows("shipment doc status → received", null, "select 1 from shipments where id = $1 and doc_status = 'received'", 1, [sA.id]);
 
 await putFile(pth(D(5), "x.pdf"));
-await expectError("client cannot record documents", cA, rec, /row-level security/, [D(5), sA.id, "other", pth(D(5), "x.pdf"), "x.pdf", null, null]);
+await expectError("client cannot record staff-only document types", cA, rec, /row-level security/, [D(5), sA.id, "customs_entry", pth(D(5), "x.pdf"), "x.pdf", null, null]);
 await expectError("assigned agent cannot record a commercial invoice", agent, rec, /row-level security/, [D(5), sA.id, "commercial_invoice", pth(D(5), "x.pdf"), "x.pdf", null, null]);
 await expectOk("assigned agent can record a customs entry", agent, rec, [D(5), sA.id, "customs_entry", pth(D(5), "x.pdf"), "x.pdf", null, null]);
 await expectOk("customs entry added to the checklist later…", doc, "insert into document_requirements (shipment_id, document_type, is_required) values ($1, 'customs_entry', false)", [sA.id]);
@@ -387,7 +389,8 @@ await msErr("milestones need a confirmed shipment", agent, sA.id, "vessel_arrive
 await msErr("event time in the future is rejected", doc, sA.id, "shipment_confirmed", new Date(Date.now() + 3600e3).toISOString(), {}, /future/);
 await ms("doc officer confirms shipment A", doc, sA.id, "shipment_confirmed", ago(100));
 (await statusOf(sA.id)).overall_status === "registered" ? ok("documents complete → shipment registered") : bad("confirm", JSON.stringify(await statusOf(sA.id)));
-await expectRows("client A sees the confirmation", cA, "select 1 from milestone_events where shipment_id = $1", 1, [sA.id]);
+await expectRows("client A sees the confirmation (client timeline)", cA, "select 1 from client_timeline($1)", 1, [sA.id]);
+await expectRows("client cannot read milestone_events directly (internal reasons)", cA, "select 1 from milestone_events", 0);
 await expectRows("client B does not (AC-05)", cB, "select 1 from milestone_events", 0);
 await msErr("confirming twice is not a valid transition", doc, sA.id, "shipment_confirmed", ago(99), {}, /Not allowed now/);
 
@@ -450,9 +453,10 @@ await expectRows("staff see the internal note", ops, "select 1 from milestone_in
 await expectRows("client sees no internal notes", cA, "select 1 from milestone_internal_notes", 0);
 await ms("hidden update for staff only", ops, sA.id, "update", ago(4), { note: "Checking demurrage", visible: false });
 await expectRows("hidden update is suppressed for notification", null, "select 1 from milestone_events where milestone_type = 'update' and notification_state = 'suppressed'", 1);
-const clientCount = (await as(cA, "select count(*)::int n from milestone_events")).rows[0].n;
+const clientTl = (await as(cA, "select milestone_type from client_timeline($1)", [sA.id])).rows;
 const staffCount = (await as(ops, "select count(*)::int n from milestone_events where shipment_id = $1", [sA.id])).rows[0].n;
-clientCount === staffCount - 1 ? ok("client does not see the hidden update") : bad("visibility", `${clientCount} vs ${staffCount}`);
+clientTl.length > 0 && !clientTl.some((r) => r.milestone_type === "update") && staffCount > clientTl.length
+  ? ok("client does not see the hidden update") : bad("visibility", `${clientTl.length} vs ${staffCount}`);
 
 console.log("\nAppend-only + corrections (AC-03):");
 const evDis1 = (await db.query("select id, event_at from milestone_events where container_id = $1 and milestone_type = 'container_discharged'", [c1])).rows[0];
@@ -484,7 +488,9 @@ const k2b = await contOf(c2);
 k2b.operational_status === "loaded" && k2b.gate_out_at === null && k2b.transport_status === "loaded"
   ? ok("cancel restores container 2 exactly (status, time, transport)") : bad("void restore", JSON.stringify(k2b));
 (await statusOf(sA.id)).overall_status === "loaded" ? ok("overall status recomputed (least advanced = loaded)") : bad("overall", (await statusOf(sA.id)).overall_status);
-await expectRows("timeline shows it cancelled, with reason", cA, "select 1 from milestone_timeline where id = $1 and is_voided and void_reason like 'Truck%'", 1, [evGate2]);
+await expectRows("staff timeline shows it cancelled, with reason", ops, "select 1 from milestone_timeline where id = $1 and is_voided and void_reason like 'Truck%'", 1, [evGate2]);
+const gate2Batch = (await db.query("select batch_id from milestone_events where id = $1", [evGate2])).rows[0].batch_id;
+await expectRows("…(that batch is not in the client timeline)", cA, "select 1 from client_timeline($1) where batch_id = $2", 0, [sA.id, gate2Batch]);
 await expectError("cannot cancel twice", ops, CM, /already been cancelled/, [evGate2, "again", true, null, null, null]);
 await ms("container 2 gate-out recorded again, normally", transport, sA.id, "gate_out", ago(3), { containers: [c2], location: "Dar ICD" });
 
@@ -564,7 +570,9 @@ aRow?.truck_registration === "T 456 DEF" && aRow.border_crossing === "Rusumo" &&
 (await contOf(t1)).operational_status === "truck_assigned" ? ok("container 1 → truck assigned") : bad("t1", (await contOf(t1)).operational_status);
 await expectRows("the driver user is given access to the shipment", null, "select 1 from shipment_assignments where shipment_id = $1 and user_id = $2", 1, [sT, driver]);
 await expectError("a container cannot get a second truck", transport, AT, /already has a truck/, atArgs(sT, [t1], { truck: "T 999 ZZZ" }));
-await expectRows("client sees the truck assignment", cA, "select 1 from transport_assignments where shipment_id = $1", 1, [sT]);
+await expectRows("client sees the truck (client_transport), without driver details", cA,
+  "select 1 from client_transport($1) where truck_registration = 'T 456 DEF' and driver_name is null and driver_phone is null", 1, [sT]);
+await expectRows("client cannot read transport_assignments directly (cancel reasons)", cA, "select 1 from transport_assignments", 0);
 await expectRows("client cannot see the driver's name or phone", cA, "select 1 from driver_contacts", 0);
 await expectRows("other client sees no assignment", cB, "select 1 from transport_assignments where shipment_id = $1", 0, [sT]);
 await expectRows("assigned driver sees own contact record", driver, "select 1 from driver_contacts where assignment_id = $1", 1, [a1]);
@@ -676,6 +684,188 @@ await expectRows("return overdue exception opened", null,
 (await contOf(c1)).return_status === "return_overdue" ? ok("container return status → overdue") : bad("return", (await contOf(c1)).return_status);
 await expectRows("system actions are logged without a user", null,
   "select 1 from exception_updates u join exceptions x on x.id = u.exception_id where x.source = 'system' and u.created_by is null", 5);
+
+console.log("\nNotifications (0014, AC-06/07/08):");
+async function asService(sql, params = []) {
+  await db.exec("reset role");
+  await db.query("select set_config('request.jwt.claim.sub', '', false)");
+  await db.exec("set role service_role");
+  try { return await db.query(sql, params); } finally { await db.exec("reset role"); }
+}
+const notesOf = async (uid, template) => (await db.query(
+  "select * from notifications where recipient_id = $1 and template_key = $2 order by created_at", [uid, template])).rows;
+await expectRows("client users got a welcome notification", null,
+  "select 1 from notifications where template_key = 'account.activated' and recipient_id = any($1)", 2, [[cA, cB]]);
+(await notesOf(cA, "milestone.shipment_confirmed")).length >= 1 ? ok("client A notified: shipment confirmed") : bad("confirmed", "none");
+const ppBatch = (await db.query("select batch_id from milestone_events where shipment_id = $1 and milestone_type = 'port_processing_started' and correction_of_event_id is null limit 1", [sA.id])).rows[0].batch_id;
+const ppNote = (await db.query("select payload from notifications where event_key = $1 and recipient_id = $2", [`milestone:${ppBatch}`, cA])).rows;
+ppNote.length === 1 && ppNote[0].payload.containers?.length === 2 && ppNote[0].payload.reference === sA.shipment_reference
+  ? ok("one notification per batch, listing both containers") : bad("batch", JSON.stringify(ppNote));
+await expectRows("staff-only update is not notified", null,
+  "select 1 from notifications n join milestone_events e on n.event_key = 'milestone:' || e.batch_id where e.milestone_type = 'update' and not e.client_visible", 0);
+await expectRows("no override/correction text in client payloads", null,
+  "select 1 from notifications where audience = 'client' and (payload::text ilike '%override%' or payload::text ilike '%Release confirmed by phone%')", 0);
+await expectRows("material ETA changes notified (3 of 5 revisions)", null,
+  "select 1 from notifications where template_key = 'eta.changed' and shipment_id = $1 and recipient_id = $2", 3, [sA.id, cA]);
+await expectRows("rejected document asks the client to act, with the reason", null,
+  "select 1 from notifications where template_key = 'document.rejected' and recipient_id = $1 and payload ->> 'reason' like 'Rejected: Amount%'", 1, [cA]);
+await expectRows("SLA-opened exception alerts its owner", null,
+  "select 1 from notifications where template_key = 'staff.exception_opened' and recipient_id = $1", 3, [doc]);
+await expectRows("escalations alert the operations manager", null,
+  "select 1 from notifications where template_key = 'staff.exception_escalated' and recipient_id = $1", 2, [ops]);
+await expectRows("clients never get staff templates, staff never client ones", null,
+  "select 1 from notifications n join profiles p on p.id = n.recipient_id where (n.audience = 'staff') <> (p.role <> 'client')", 0);
+await expectRows("client B got nothing about client A's shipments", null,
+  "select 1 from notifications n join shipments s on s.id = n.shipment_id where n.recipient_id = $1 and s.client_id = $2", 0, [cB, A]);
+await expectRows("push deliveries queued for client A (push on by default)", null,
+  "select 1 from notification_deliveries d join notifications n on n.id = d.notification_id where n.recipient_id = $1 and d.channel = 'push' and d.state = 'pending' limit 1", 1, [cA]);
+await expectRows("no WhatsApp without opt-in", null,
+  "select 1 from notification_deliveries d join notifications n on n.id = d.notification_id where n.recipient_id = $1 and d.channel = 'whatsapp'", 0, [cA]);
+const before08 = (await db.query("select count(*)::int n from notification_deliveries")).rows[0].n;
+const re = (await db.query("select private.enqueue_notification($1, 'milestone.port_processing_started', $2, '{}'::jsonb, $3) n",
+  [`milestone:${ppBatch}`, sA.id, [cA, cB]])).rows[0].n;
+const after08 = (await db.query("select count(*)::int n from notification_deliveries")).rows[0].n;
+re === 0 && after08 === before08 ? ok("re-processing the same event sends nothing again; other clients never added (AC-08)") : bad("dedup", `${re} new, ${after08 - before08} deliveries`);
+
+// RLS
+await expectRows("client A reads only its own notifications", cA, "select 1 from notifications where recipient_id <> $1", 0, [cA]);
+await expectRows("client A cannot read B's notification by id", cA,
+  "select 1 from notifications where id = (select id from notifications where recipient_id = $1 limit 1)", 0, [cB]);
+const n1 = (await notesOf(cA, "account.activated"))[0].id;
+await expectRows("client marks own notification read", cA, "update notifications set read_at = now() where id = $1 returning id", 1, [n1]);
+await expectRows("…but not someone else's", cA, "update notifications set read_at = now() where recipient_id = $1 returning id", 0, [cB]);
+await expectError("payload cannot be edited", cA, "update notifications set payload = '{}' where id = $1", /permission denied/, [n1]);
+await expectError("clients cannot create notifications", cA,
+  "insert into notifications (recipient_id, audience, event_key, template_key) values ($1, 'client', 'x', 'account.activated')", /permission denied/, [cA]);
+await expectRows("client sees own deliveries only", cB, "select 1 from notification_deliveries d join notifications n on n.id = d.notification_id where n.recipient_id = $1", 0, [cA]);
+await expectRows("delivery attempts are staff-only", cA, "select 1 from notification_delivery_attempts", 0);
+
+const sub = { endpoint: "https://push.example.test/send/abc123", p256dh: "B".repeat(87), auth: "A".repeat(22) };
+await expectOk("client registers a push subscription", cA, "insert into push_subscriptions (endpoint, p256dh, auth) values ($1, $2, $3)", [sub.endpoint, sub.p256dh, sub.auth]);
+await expectError("…only for itself", cA, "insert into push_subscriptions (user_id, endpoint, p256dh, auth) values ($1, $2, $3, $4)", /permission denied|row-level/, [cB, "https://push.example.test/x", sub.p256dh, sub.auth]);
+await expectError("plain http endpoints refused", cA, "insert into push_subscriptions (endpoint, p256dh, auth) values ('http://evil.test/x', $1, $2)", /check constraint/, [sub.p256dh, sub.auth]);
+await expectRows("other users cannot see it", cB, "select 1 from push_subscriptions", 0);
+await expectError("anonymous cannot register", "anon", "insert into push_subscriptions (endpoint, p256dh, auth) values ($1, $2, $3)", /permission denied/, ["https://push.example.test/y", sub.p256dh, sub.auth]);
+
+// WhatsApp consent stamped by the database
+await expectError("WhatsApp opt-in needs a phone number", cA, "update notification_preferences set whatsapp_opt_in = true where user_id = $1", /whatsapp_consent_recorded/, [cA]);
+await expectOk("client opts in to WhatsApp (consent time faked)", cA,
+  "update notification_preferences set whatsapp_opt_in = true, whatsapp_phone = '+250788000001', consent_at = '2020-01-01', consent_source = 'portal' where user_id = $1", [cA]);
+const pref = (await db.query("select consent_at from notification_preferences where user_id = $1", [cA])).rows[0];
+Date.now() - new Date(pref.consent_at) < 60e3 ? ok("consent time is set by the database, not the client") : bad("consent", String(pref.consent_at));
+await ms("delivery recorded (WhatsApp-eligible)", driver, sT, "arrived", ago(0.04), { containers: [t1] });
+await expectRows("opted-in client gets a WhatsApp delivery for a key milestone", null,
+  "select 1 from notification_deliveries d join notifications n on n.id = d.notification_id where n.recipient_id = $1 and n.template_key = 'milestone.arrived' and d.channel = 'whatsapp'", 1, [cA]);
+await ms("offloading (push only by rule)", driver, sT, "offloading_started", ago(0.03), { containers: [t1] });
+await expectRows("…but not for minor ones", null,
+  "select 1 from notification_deliveries d join notifications n on n.id = d.notification_id where n.recipient_id = $1 and n.template_key = 'milestone.offloading_started' and d.channel = 'whatsapp'", 0, [cA]);
+
+// Sender API
+await expectError("users cannot claim deliveries", ops, "select * from claim_notification_deliveries(10)", /permission denied/);
+const claimed = (await asService("select * from claim_notification_deliveries(500)")).rows;
+claimed.length > 0 ? ok(`sender claims due deliveries (${claimed.length})`) : bad("claim", "none");
+const pushRow = claimed.find((r) => r.channel === "push" && r.recipient_id === cA);
+pushRow?.subscriptions?.[0]?.endpoint === sub.endpoint && pushRow.timezone && pushRow.locale === "en"
+  ? ok("claim returns the device subscriptions, locale and time zone") : bad("claim row", JSON.stringify(pushRow));
+const waRow = claimed.find((r) => r.channel === "whatsapp");
+waRow?.whatsapp_phone === "+250788000001" ? ok("WhatsApp claim carries the consented number") : bad("wa row", JSON.stringify(waRow));
+(await asService("select count(*)::int n from claim_notification_deliveries(500)")).rows[0].n === 0
+  ? ok("claimed rows are locked (a second sender gets none)") : bad("lock", "re-claimed");
+const CD = "select complete_notification_delivery($1, $2, $3, $4, $5, $6, $7, $8::text[])";
+await asService(CD, [pushRow.delivery_id, true, "push-ok-1", null, null, false, false, null]);
+await expectRows("success → sent, attempt logged", null,
+  "select 1 from notification_deliveries d join notification_delivery_attempts a on a.delivery_id = d.id where d.id = $1 and d.state = 'sent' and a.ok and a.provider_message_id = 'push-ok-1'", 1, [pushRow.delivery_id]);
+await asService(CD, [pushRow.delivery_id, false, null, "late", "duplicate completion", false, false, null]);
+await expectRows("a late duplicate completion changes nothing", null, "select 1 from notification_delivery_attempts where delivery_id = $1", 1, [pushRow.delivery_id]);
+await asService(CD, [waRow.delivery_id, false, null, "provider_503", "Service unavailable", false, false, null]);
+const waAfter = (await db.query("select state, attempt_count, next_attempt_at from notification_deliveries where id = $1", [waRow.delivery_id])).rows[0];
+waAfter.state === "pending" && new Date(waAfter.next_attempt_at) - Date.now() > 50e3
+  ? ok("transient failure → retried after a 1 minute backoff") : bad("backoff", JSON.stringify(waAfter));
+await db.query("update notification_deliveries set next_attempt_at = now(), attempt_count = 4 where id = $1", [waRow.delivery_id]);
+await asService("select * from claim_notification_deliveries(500)");
+await asService(CD, [waRow.delivery_id, false, null, "provider_503", "Still unavailable", false, false, null]);
+await expectRows("after 5 attempts → failed (bounded retries)", null, "select 1 from notification_deliveries where id = $1 and state = 'failed' and attempt_count = 5", 1, [waRow.delivery_id]);
+await expectRows("every attempt is logged", null, "select 1 from notification_delivery_attempts where delivery_id = $1", 2, [waRow.delivery_id]);
+const other = claimed.find((r) => r.channel === "push" && r.delivery_id !== pushRow.delivery_id && r.recipient_id === cA);
+await asService(CD, [other.delivery_id, false, null, "push_410", "Gone", true, false, [sub.endpoint]]);
+await expectRows("expired device: permanent failure and the subscription is removed", null,
+  "select 1 from push_subscriptions where endpoint = $1", 0, [sub.endpoint]);
+const noDevice = claimed.find((r) => r.channel === "push" && r.recipient_id !== cA);
+if (noDevice) {
+  await asService(CD, [noDevice.delivery_id, false, null, "no_subscription", null, false, true, null]);
+  await expectRows("no device → suppressed, not failed", null, "select 1 from notification_deliveries where id = $1 and state = 'suppressed'", 1, [noDevice.delivery_id]);
+}
+await expectError("doc officer cannot retry notifications", doc, "select retry_notification_delivery($1)", /Only an operations manager/, [waRow.delivery_id]);
+await expectOk("ops manager retries the failed WhatsApp message", ops, "select retry_notification_delivery($1)", [waRow.delivery_id]);
+await expectRows("…which is pending again", null, "select 1 from notification_deliveries where id = $1 and state = 'pending' and attempt_count = 0", 1, [waRow.delivery_id]);
+await expectError("only failed ones can be retried", ops, "select retry_notification_delivery($1)", /Only failed/, [pushRow.delivery_id]);
+await db.query("update notification_deliveries set created_at = now() - interval '25 hours' where id = $1", [waRow.delivery_id]);
+await asService("select * from claim_notification_deliveries(1)");
+await expectRows("undelivered for 24 h → failed as expired", null, "select 1 from notification_deliveries where id = $1 and state = 'failed' and error_code = 'expired'", 1, [waRow.delivery_id]);
+await db.query("update notification_deliveries set state = 'sent' where state in ('pending', 'sending')"); // tidy for later checks
+
+console.log("\nClient portal (0015):");
+const tl = (await as(cA, "select * from client_timeline($1)", [sA.id])).rows;
+tl.length > 5 && tl.every((r) => r.label && r.event_at) && !("override_reason" in tl[0]) && !("recorded_by" in tl[0])
+  ? ok(`client timeline: ${tl.length} entries, no internal columns`) : bad("client timeline", JSON.stringify(tl[0]));
+tl.some((r) => r.is_corrected) ? ok("corrections applied in the client timeline") : bad("corrected", "none");
+await expectRows("other client gets nothing from the timeline function", cB, "select 1 from client_timeline($1)", 0, [sA.id]);
+await expectRows("other client gets nothing from the transport function", cB, "select 1 from client_transport($1)", 0, [sT]);
+await expectOk("admin enables driver contact for client A (policy)", admin, "update organizations set show_driver_contact = true where id = $1", [A]);
+await expectRows("policy alone is not enough (driver has not agreed)", cA, "select 1 from client_transport($1) where driver_name is not null", 0, [sT]);
+await expectRows("transport records the driver's consent", transport, "update driver_contacts set share_with_client = true where assignment_id = $1 returning 1", 1, [a1]);
+await expectRows("policy + consent → client sees the driver contact", cA,
+  "select 1 from client_transport($1) where driver_name = 'Eric Niyonzima (fictional)' and driver_phone = '+250788000111'", 1, [sT]);
+await expectRows("clients cannot set the driver consent", cA, "update driver_contacts set share_with_client = false where assignment_id = $1 returning 1", 0, [a1]);
+await expectRows("…consent unchanged", null, "select 1 from driver_contacts where assignment_id = $1 and share_with_client", 1, [a1]);
+
+const xc = (await expectOk("ops opens an exception with a client message", ops, OX,
+  oxArgs(sA.id, { title: "Customs query on HS code", details: "Officer suspects undervaluation (internal)", clientMessage: "Customs asked a question about the cargo; we are answering it today.", clientVisible: true })))?.rows[0]?.id;
+const alerts = (await as(cA, "select * from client_shipment_alerts($1)", [sA.id])).rows;
+alerts.length === 1 && alerts[0].message.startsWith("Customs asked") && !JSON.stringify(alerts).includes("undervaluation")
+  ? ok("client sees the client message only, not internal details") : bad("alerts", JSON.stringify(alerts));
+await expectRows("client is notified of the alert", null, "select 1 from notifications where template_key = 'shipment.alert' and recipient_id = $1", 1, [cA]);
+await expectRows("other client sees no alerts", cB, "select 1 from client_shipment_alerts($1)", 0, [sA.id]);
+const SCM = "select set_exception_client_message($1, $2, $3)";
+await expectError("a non-owner cannot message the client", agent, SCM, /Only the owner/, [xc, "Hello", true]);
+await expectError("a visible message needs text", ops, SCM, /Write the message/, [xc, "", true]);
+await expectOk("ops hides the alert from the client", ops, SCM, [xc, null, false]);
+await expectRows("…and it disappears from the portal", cA, "select 1 from client_shipment_alerts($1)", 0, [sA.id]);
+
+const cDoc = "abcdefab-cdef-4abc-8def-abcdefabcdef";
+await putFile(pth(cDoc, "packing-list.pdf"), 2048);
+await expectError("client upload must be visible to the client", cA, "select * from record_document($1, $2, $3, $4, $5, $6, $7, $8)", /row-level security/,
+  [cDoc, sA.id, "packing_list", pth(cDoc, "packing-list.pdf"), "packing-list.pdf", null, null, false]);
+await expectOk("client uploads its packing list", cA, rec, [cDoc, sA.id, "packing_list", pth(cDoc, "packing-list.pdf"), "Packing list.pdf", null, null]);
+await expectRows("…as pending review, uploaded by the client", null,
+  "select 1 from documents where id = $1 and verification_status = 'pending' and uploaded_by = $2 and client_visible", 1, [cDoc, cA]);
+await expectRows("responsible staff member is notified", null, "select 1 from notifications where template_key = 'staff.client_uploaded' and recipient_id = $1", 1, [doc]);
+await expectError("client cannot review its own upload", cA, "select review_document($1, 'verified')", /not allowed/, [cDoc]);
+
+console.log("\nSender schedule (0016):");
+await expectRows("queueing still works when the sender is not configured", null,
+  "select private.enqueue_notification('kick-test:1', 'shipment.alert', $1, '{\"message\":\"Kick test\"}'::jsonb, array[$2::uuid]) n", 1, [sA.id, cA]);
+await expectOk("the kick is a no-op without Vault secrets", null, "select private.kick_notification_sender()");
+await expectError("users cannot trigger the sender", ops, "select private.kick_notification_sender()", /permission denied/);
+await expectError("…nor clients", cA, "select private.kick_sender_after_queue()", /permission denied/);
+await expectRows("ops manager can read a client's notification (failure diagnosis)", ops,
+  "select 1 from notifications where event_key = 'kick-test:1' and recipient_id = $1", 1, [cA]);
+await expectRows("…a doc officer cannot", doc, "select 1 from notifications where event_key = 'kick-test:1'", 0);
+await expectRows("…nor can ops change it", ops, "update notifications set read_at = now() where event_key = 'kick-test:1' returning 1", 0);
+
+console.log("\nSender pause (0017):");
+await db.query("update notification_deliveries set state = 'pending', next_attempt_at = now() where id = (select id from notification_deliveries order by created_at desc limit 1)");
+await expectOk("admin pauses outbound sending", admin, "update app_settings set value = 'true' where key = 'notify.sender_paused'");
+await expectRows("an ops manager cannot change the switch", ops, "update app_settings set value = 'false' where key = 'notify.sender_paused' returning 1", 0);
+(await asService("select count(*)::int n from claim_notification_deliveries(50)")).rows[0].n === 0
+  ? ok("paused → the deployed sender claims nothing") : bad("pause", "claimed");
+const queuedN = (await db.query("select count(*)::int n from notification_deliveries where state = 'pending' and next_attempt_at <= now()")).rows[0].n;
+queuedN >= 1 ? ok(`…deliveries stay queued (${queuedN})`) : bad("queued", "none");
+(await asService("select count(*)::int n from claim_notification_deliveries(50, true)")).rows[0].n === queuedN
+  ? ok("the test sender can still claim (service role, explicit)") : bad("ignore pause", "none");
+await expectError("users cannot claim, paused or not", ops, "select * from claim_notification_deliveries(5, true)", /permission denied/);
+await expectOk("admin resumes sending", admin, "update app_settings set value = 'false' where key = 'notify.sender_paused'");
+await expectRows("the change is audited", null, "select 1 from audit_log where table_name = 'app_settings' and action = 'UPDATE' and new_data ->> 'key' = 'notify.sender_paused'", 2);
 
 console.log("\nProfile sync:");
 await expectRows("user with no profile sees no shipments", nobody, "select id from shipments", 0);

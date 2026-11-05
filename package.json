@@ -7,14 +7,15 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.functions.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "db:types": "supabase gen types typescript --remote=idyydcuihxkyitylkugo --schema public > lib/supabase/database.types.ts",
     "db:seed": "node --env-file=.env.local scripts/seed-dev.mts",
     "test:db": "node tests/db/rls.check.mjs supabase/migrations",
-    "test:live": "node --env-file=.env.local tests/live/run.mjs"
+    "test:live": "node --env-file=.env.local tests/live/run.mjs",
+    "notify:run": "node --env-file=.env.local scripts/notify-run.mts"
   },
   "dependencies": {
     "@hookform/resolvers": "^7.0.2",
