@@ -73,6 +73,7 @@ export type Database = {
           seal_number: string | null
           shipment_id: string
           size_type: string | null
+          transport_status: Database["public"]["Enums"]["transport_status"]
           updated_at: string
         }
         Insert: {
@@ -94,6 +95,7 @@ export type Database = {
           seal_number?: string | null
           shipment_id: string
           size_type?: string | null
+          transport_status?: Database["public"]["Enums"]["transport_status"]
           updated_at?: string
         }
         Update: {
@@ -115,6 +117,7 @@ export type Database = {
           seal_number?: string | null
           shipment_id?: string
           size_type?: string | null
+          transport_status?: Database["public"]["Enums"]["transport_status"]
           updated_at?: string
         }
         Relationships: [
@@ -260,6 +263,253 @@ export type Database = {
             columns: ["verified_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      milestone_catalogue: {
+        Row: {
+          allowed_roles: Database["public"]["Enums"]["app_role"][]
+          client_visible_default: boolean
+          label: string
+          milestone_type: Database["public"]["Enums"]["milestone_type"]
+          requires_customs:
+            | Database["public"]["Enums"]["customs_status"][]
+            | null
+          requires_location: boolean
+          requires_operational:
+            | Database["public"]["Enums"]["shipment_status"][]
+            | null
+          requires_overall:
+            | Database["public"]["Enums"]["shipment_status"][]
+            | null
+          scope: string
+          sets_customs: Database["public"]["Enums"]["customs_status"] | null
+          sets_delivery: Database["public"]["Enums"]["delivery_status"] | null
+          sets_operational:
+            | Database["public"]["Enums"]["shipment_status"]
+            | null
+          sets_overall: Database["public"]["Enums"]["shipment_status"] | null
+          sets_return: Database["public"]["Enums"]["return_status"] | null
+          sets_transport: Database["public"]["Enums"]["transport_status"] | null
+          sort_order: number
+        }
+        Insert: {
+          allowed_roles: Database["public"]["Enums"]["app_role"][]
+          client_visible_default?: boolean
+          label: string
+          milestone_type: Database["public"]["Enums"]["milestone_type"]
+          requires_customs?:
+            | Database["public"]["Enums"]["customs_status"][]
+            | null
+          requires_location?: boolean
+          requires_operational?:
+            | Database["public"]["Enums"]["shipment_status"][]
+            | null
+          requires_overall?:
+            | Database["public"]["Enums"]["shipment_status"][]
+            | null
+          scope: string
+          sets_customs?: Database["public"]["Enums"]["customs_status"] | null
+          sets_delivery?: Database["public"]["Enums"]["delivery_status"] | null
+          sets_operational?:
+            | Database["public"]["Enums"]["shipment_status"]
+            | null
+          sets_overall?: Database["public"]["Enums"]["shipment_status"] | null
+          sets_return?: Database["public"]["Enums"]["return_status"] | null
+          sets_transport?:
+            | Database["public"]["Enums"]["transport_status"]
+            | null
+          sort_order: number
+        }
+        Update: {
+          allowed_roles?: Database["public"]["Enums"]["app_role"][]
+          client_visible_default?: boolean
+          label?: string
+          milestone_type?: Database["public"]["Enums"]["milestone_type"]
+          requires_customs?:
+            | Database["public"]["Enums"]["customs_status"][]
+            | null
+          requires_location?: boolean
+          requires_operational?:
+            | Database["public"]["Enums"]["shipment_status"][]
+            | null
+          requires_overall?:
+            | Database["public"]["Enums"]["shipment_status"][]
+            | null
+          scope?: string
+          sets_customs?: Database["public"]["Enums"]["customs_status"] | null
+          sets_delivery?: Database["public"]["Enums"]["delivery_status"] | null
+          sets_operational?:
+            | Database["public"]["Enums"]["shipment_status"]
+            | null
+          sets_overall?: Database["public"]["Enums"]["shipment_status"] | null
+          sets_return?: Database["public"]["Enums"]["return_status"] | null
+          sets_transport?:
+            | Database["public"]["Enums"]["transport_status"]
+            | null
+          sort_order?: number
+        }
+        Relationships: []
+      }
+      milestone_events: {
+        Row: {
+          batch_id: string
+          client_visible: boolean
+          container_id: string | null
+          correction_of_event_id: string | null
+          correction_reason: string | null
+          event_at: string
+          evidence_document_ids: string[]
+          id: string
+          idempotency_key: string | null
+          is_override: boolean
+          is_void: boolean
+          location: string | null
+          milestone_type: Database["public"]["Enums"]["milestone_type"]
+          new_status: string | null
+          notification_state: Database["public"]["Enums"]["notification_state"]
+          override_reason: string | null
+          previous_state: Json | null
+          previous_status: string | null
+          public_note: string | null
+          recorded_at: string
+          recorded_by: string | null
+          seal_number: string | null
+          shipment_id: string
+          source: Database["public"]["Enums"]["event_source"]
+          status_track: string | null
+        }
+        Insert: {
+          batch_id: string
+          client_visible?: boolean
+          container_id?: string | null
+          correction_of_event_id?: string | null
+          correction_reason?: string | null
+          event_at: string
+          evidence_document_ids?: string[]
+          id?: string
+          idempotency_key?: string | null
+          is_override?: boolean
+          is_void?: boolean
+          location?: string | null
+          milestone_type: Database["public"]["Enums"]["milestone_type"]
+          new_status?: string | null
+          notification_state?: Database["public"]["Enums"]["notification_state"]
+          override_reason?: string | null
+          previous_state?: Json | null
+          previous_status?: string | null
+          public_note?: string | null
+          recorded_at?: string
+          recorded_by?: string | null
+          seal_number?: string | null
+          shipment_id: string
+          source?: Database["public"]["Enums"]["event_source"]
+          status_track?: string | null
+        }
+        Update: {
+          batch_id?: string
+          client_visible?: boolean
+          container_id?: string | null
+          correction_of_event_id?: string | null
+          correction_reason?: string | null
+          event_at?: string
+          evidence_document_ids?: string[]
+          id?: string
+          idempotency_key?: string | null
+          is_override?: boolean
+          is_void?: boolean
+          location?: string | null
+          milestone_type?: Database["public"]["Enums"]["milestone_type"]
+          new_status?: string | null
+          notification_state?: Database["public"]["Enums"]["notification_state"]
+          override_reason?: string | null
+          previous_state?: Json | null
+          previous_status?: string | null
+          public_note?: string | null
+          recorded_at?: string
+          recorded_by?: string | null
+          seal_number?: string | null
+          shipment_id?: string
+          source?: Database["public"]["Enums"]["event_source"]
+          status_track?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "milestone_events_container_id_fkey"
+            columns: ["container_id"]
+            isOneToOne: false
+            referencedRelation: "containers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "milestone_events_correction_of_event_id_fkey"
+            columns: ["correction_of_event_id"]
+            isOneToOne: false
+            referencedRelation: "milestone_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "milestone_events_correction_of_event_id_fkey"
+            columns: ["correction_of_event_id"]
+            isOneToOne: false
+            referencedRelation: "milestone_timeline"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "milestone_events_recorded_by_fkey"
+            columns: ["recorded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "milestone_events_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      milestone_internal_notes: {
+        Row: {
+          batch_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          note: string
+          shipment_id: string
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note: string
+          shipment_id: string
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string
+          shipment_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "milestone_internal_notes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "milestone_internal_notes_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
             referencedColumns: ["id"]
           },
         ]
@@ -638,9 +888,88 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      milestone_timeline: {
+        Row: {
+          batch_id: string | null
+          client_visible: boolean | null
+          container_id: string | null
+          corrected_at: string | null
+          corrected_by: string | null
+          correction_reason: string | null
+          event_at: string | null
+          evidence_document_ids: string[] | null
+          id: string | null
+          is_corrected: boolean | null
+          is_override: boolean | null
+          is_voided: boolean | null
+          location: string | null
+          milestone_type: Database["public"]["Enums"]["milestone_type"] | null
+          new_status: string | null
+          original_event_at: string | null
+          override_reason: string | null
+          previous_status: string | null
+          public_note: string | null
+          recorded_at: string | null
+          recorded_by: string | null
+          seal_number: string | null
+          shipment_id: string | null
+          source: Database["public"]["Enums"]["event_source"] | null
+          status_track: string | null
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "milestone_events_container_id_fkey"
+            columns: ["container_id"]
+            isOneToOne: false
+            referencedRelation: "containers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "milestone_events_recorded_by_fkey"
+            columns: ["voided_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "milestone_events_recorded_by_fkey"
+            columns: ["recorded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "milestone_events_recorded_by_fkey"
+            columns: ["corrected_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "milestone_events_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
+      correct_milestone: {
+        Args: {
+          p_event_at?: string
+          p_event_id: string
+          p_location?: string
+          p_public_note?: string
+          p_reason: string
+          p_void?: boolean
+        }
+        Returns: string
+      }
       record_document: {
         Args: {
           p_client_visible?: boolean
@@ -655,6 +984,28 @@ export type Database = {
         Returns: {
           document_id: string
           version: number
+        }[]
+      }
+      record_milestone: {
+        Args: {
+          p_client_visible?: boolean
+          p_container_ids?: string[]
+          p_event_at: string
+          p_evidence_document_ids?: string[]
+          p_idempotency_key?: string
+          p_internal_note?: string
+          p_location?: string
+          p_location_kind?: Database["public"]["Enums"]["location_kind"]
+          p_milestone: Database["public"]["Enums"]["milestone_type"]
+          p_override_reason?: string
+          p_public_note?: string
+          p_seal_number?: string
+          p_shipment_id: string
+        }
+        Returns: {
+          container_id: string
+          event_id: string
+          new_status: string
         }[]
       }
       register_shipment: {
@@ -723,6 +1074,7 @@ export type Database = {
         | "invoice"
         | "receipt"
         | "other"
+      event_source: "staff" | "driver" | "integration" | "system"
       finance_status:
         | "not_invoiced"
         | "invoiced"
@@ -732,6 +1084,32 @@ export type Database = {
         | "disputed"
         | "credit_approved"
       location_kind: "terminal" | "icd" | "in_transit" | "destination" | "depot"
+      milestone_type:
+        | "shipment_confirmed"
+        | "vessel_arrived"
+        | "container_discharged"
+        | "port_processing_started"
+        | "ready_for_dispatch"
+        | "truck_assigned"
+        | "loading_started"
+        | "loaded"
+        | "gate_out"
+        | "transit_checkpoint"
+        | "arrived_at_border"
+        | "border_crossed"
+        | "arrived"
+        | "offloading_started"
+        | "delivered"
+        | "pod_received"
+        | "empty_returned"
+        | "customs_entry_prepared"
+        | "customs_submitted"
+        | "customs_inspection"
+        | "customs_duties_pending"
+        | "customs_released"
+        | "customs_on_hold"
+        | "update"
+      notification_state: "pending" | "sent" | "failed" | "suppressed"
       return_status:
         | "not_due"
         | "awaiting_empty_return"
@@ -942,6 +1320,7 @@ export const Constants = {
         "receipt",
         "other",
       ],
+      event_source: ["staff", "driver", "integration", "system"],
       finance_status: [
         "not_invoiced",
         "invoiced",
@@ -952,6 +1331,33 @@ export const Constants = {
         "credit_approved",
       ],
       location_kind: ["terminal", "icd", "in_transit", "destination", "depot"],
+      milestone_type: [
+        "shipment_confirmed",
+        "vessel_arrived",
+        "container_discharged",
+        "port_processing_started",
+        "ready_for_dispatch",
+        "truck_assigned",
+        "loading_started",
+        "loaded",
+        "gate_out",
+        "transit_checkpoint",
+        "arrived_at_border",
+        "border_crossed",
+        "arrived",
+        "offloading_started",
+        "delivered",
+        "pod_received",
+        "empty_returned",
+        "customs_entry_prepared",
+        "customs_submitted",
+        "customs_inspection",
+        "customs_duties_pending",
+        "customs_released",
+        "customs_on_hold",
+        "update",
+      ],
+      notification_state: ["pending", "sent", "failed", "suppressed"],
       return_status: [
         "not_due",
         "awaiting_empty_return",

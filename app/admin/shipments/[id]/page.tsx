@@ -5,7 +5,15 @@ import { Suspense } from "react";
 import { Upload } from "lucide-react";
 import { requireStaff } from "@/lib/dal/session";
 import { getShipment } from "@/lib/dal/shipments";
-import { formatDate } from "@/lib/format";
+import { getMilestones } from "@/lib/dal/milestones";
+import { Constants } from "@/lib/supabase/database.types";
+import {
+  CUSTOMS_STATUS_LABELS, DELIVERY_STATUS_LABELS, RETURN_STATUS_LABELS, TRANSPORT_STATUS_LABELS,
+  canOverride, milestoneOptions,
+} from "@/lib/domain/milestones";
+import { RecordMilestoneForm } from "@/components/milestones/record-form";
+import { MilestoneTimeline } from "@/components/milestones/timeline";
+import { formatDate, formatDateTime } from "@/lib/format";
 import { SHIPMENT_STATUS_LABELS } from "@/lib/domain/status-labels";
 import {
   DOCUMENT_TYPE_LABELS, DOC_STATUS_LABELS, canReviewDocuments, uploadTypesFor,
@@ -45,7 +53,7 @@ async function ShipmentDetail({ params, searchParams }: PageProps<"/admin/shipme
   const user = await requireStaff();
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const s = await getShipment(id);
+  const [s, milestones] = await Promise.all([getShipment(id), getMilestones(id)]);
   if (!s) notFound(); // also when RLS hides it (e.g. not assigned to this agent)
   const tz = s.client?.timezone ?? "Africa/Kigali";
 
@@ -54,6 +62,14 @@ async function ShipmentDetail({ params, searchParams }: PageProps<"/admin/shipme
   const wanted = typeof sp.upload === "string" ? sp.upload : undefined;
   const defaultType = uploadTypes.find((t) => t === wanted);
   const containers = s.containers.map((c) => ({ id: c.id, label: c.container_number }));
+
+  // Milestone form: options for this role, with hints that mirror the database rules
+  const options = milestoneOptions(milestones.catalogue, user.role, s,
+    s.containers.map((c) => ({ id: c.id, label: c.container_number, operational_status: c.operational_status })),
+    Constants.public.Enums.shipment_status);
+  const evidence = s.documents
+    .filter((d) => !s.documents.some((x) => x.replaces_document_id === d.id))
+    .map((d) => ({ id: d.id, label: `${DOCUMENT_TYPE_LABELS[d.document_type]} · ${d.file_name}` }));
 
   const facts: [string, React.ReactNode][] = [
     ["Client", s.client?.legal_name],
@@ -67,6 +83,8 @@ async function ShipmentDetail({ params, searchParams }: PageProps<"/admin/shipme
     ["Planned vessel arrival", formatDate(s.planned_vessel_arrival, tz)],
     ["Responsible", s.owner?.full_name || s.owner?.email || "—"],
     ["Documents", <DocStatusBadge key="d" status={s.doc_status} />],
+    ["Customs", CUSTOMS_STATUS_LABELS[s.customs_status]],
+    ["Actual vessel arrival", formatDateTime(s.actual_vessel_arrival, tz)],
   ];
 
   return (
@@ -78,7 +96,7 @@ async function ShipmentDetail({ params, searchParams }: PageProps<"/admin/shipme
         actions={<ShipmentStatusBadge status={s.overall_status} exception={s.has_open_exception} />}
       />
       <div className="flex flex-col gap-6">
-        {sp.created && <FormAlert kind="success">Shipment registered as {SHIPMENT_STATUS_LABELS[s.overall_status].toLowerCase()}. Milestone updates come in the next sprint.</FormAlert>}
+        {sp.created && <FormAlert kind="success">Shipment registered as {SHIPMENT_STATUS_LABELS[s.overall_status].toLowerCase()}. Record &ldquo;Shipment confirmed&rdquo; below when the booking is confirmed.</FormAlert>}
 
         <section className="rounded-lg border bg-card p-4 sm:p-6">
           <h2 className="mb-3 text-lg font-medium">Details</h2>
@@ -96,15 +114,41 @@ async function ShipmentDetail({ params, searchParams }: PageProps<"/admin/shipme
           <h2 className="mb-3 text-lg font-medium">Containers ({s.containers.length})</h2>
           <ul className="divide-y">
             {s.containers.map((c) => (
-              <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                <span className="font-mono font-medium">{c.container_number}</span>
-                <span className="text-sm text-muted-foreground">
-                  {sizeLabel(c.size_type)}{c.seal_number ? ` · seal ${c.seal_number}` : ""} · {SHIPMENT_STATUS_LABELS[c.operational_status]}
-                </span>
+              <li key={c.id} className="flex flex-col gap-1 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-mono font-medium">{c.container_number}</span>
+                  <ShipmentStatusBadge status={c.operational_status} />
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {sizeLabel(c.size_type)}{c.seal_number ? ` · seal ${c.seal_number}` : ""}
+                  {c.location_name ? ` · ${c.location_name}` : ""}
+                </p>
+                <p className="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+                  <span>Transport: {TRANSPORT_STATUS_LABELS[c.transport_status]}</span>
+                  <span>Delivery: {DELIVERY_STATUS_LABELS[c.delivery_status]}</span>
+                  <span>Return: {RETURN_STATUS_LABELS[c.return_status]}</span>
+                  {c.gate_out_at && <span>Gate-out {formatDateTime(c.gate_out_at, tz)}</span>}
+                  {c.delivery_at && <span>Delivered {formatDateTime(c.delivery_at, tz)}</span>}
+                </p>
               </li>
             ))}
           </ul>
         </section>
+
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+          {options.length > 0 && (
+            <section id="record" className="h-fit scroll-mt-20 rounded-lg border bg-card p-4 sm:p-6">
+              <h2 className="mb-3 text-lg font-medium">Record a milestone</h2>
+              <RecordMilestoneForm shipmentId={s.id} options={options} containers={s.containers.map((c) => ({
+                id: c.id, label: c.container_number, status: SHIPMENT_STATUS_LABELS[c.operational_status] }))}
+                evidence={evidence} canOverride={canOverride(user.role)} />
+            </section>
+          )}
+          <section className={`rounded-lg border bg-card p-4 sm:p-6 ${options.length ? "" : "lg:col-span-2"}`}>
+            <h2 className="mb-4 text-lg font-medium">Timeline</h2>
+            <MilestoneTimeline data={milestones} containers={containers} timeZone={tz} user={user} />
+          </section>
+        </div>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
           <section className="h-fit rounded-lg border bg-card p-4 sm:p-6">

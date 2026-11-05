@@ -86,3 +86,23 @@ test("another client cannot open the document link", async ({ browser }) => {
   expect(res.status()).toBe(404);
   await other.close();
 });
+
+test("doc officer records, then cancels, a milestone (AC-03, AC-04)", async ({ page }) => {
+  test.skip(!shipmentUrl, "needs the shipment from the first test");
+  await signIn(page, "doc.officer@ngb.example");
+  await page.goto(shipmentUrl);
+  const form = page.locator("#record");
+  await form.getByLabel("Milestone", { exact: true }).selectOption("shipment_confirmed");
+  await form.getByLabel("Note for the client (optional)", { exact: true }).fill("Booking confirmed with the carrier (E2E)");
+  await form.getByRole("button", { name: "Record milestone" }).click();
+  await expect(form.getByText("Milestone recorded.")).toBeVisible();
+  await expect(page.getByText("Booking confirmed with the carrier (E2E)")).toBeVisible();
+  await expectNoHorizontalScroll(page);
+
+  await page.getByRole("button", { name: "Cancel milestone" }).click();
+  await page.getByLabel("Reason for cancelling", { exact: true }).fill("Recorded on the wrong shipment (E2E)");
+  await page.getByRole("button", { name: "Cancel milestone" }).click();
+  // the entry itself shows the result (its controls are gone once nothing is left to correct)
+  await expect(page.getByText("Cancelled", { exact: true })).toBeVisible();
+  await expect(page.getByText("Recorded on the wrong shipment (E2E)", { exact: false })).toBeVisible();
+});

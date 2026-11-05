@@ -79,7 +79,8 @@ export async function getShipment(id: string) {
        client:organizations!shipments_client_id_fkey(id, legal_name, client_code, timezone),
        origin:ports(name, code),
        owner:profiles!shipments_assigned_ops_user_id_fkey(full_name, email),
-       containers(id, container_number, size_type, seal_number, operational_status, location_name),
+       containers(id, container_number, size_type, seal_number, operational_status, transport_status, delivery_status,
+         return_status, location_kind, location_name, discharge_at, gate_out_at, delivery_at, empty_return_at),
        document_requirements(id, document_type, is_required, status, client_note, due_date),
        documents(id, document_type, container_id, file_name, mime_type, size_bytes, uploaded_at, verification_status,
          verified_at, rejection_reason, client_visible, version, replaces_document_id,
@@ -88,6 +89,7 @@ export async function getShipment(id: string) {
     )
     .eq("id", id)
     .order("uploaded_at", { referencedTable: "documents", ascending: false })
+    .order("container_number", { referencedTable: "containers" })
     .maybeSingle();
   if (error) throw new Error("Could not load shipment");
   return data;

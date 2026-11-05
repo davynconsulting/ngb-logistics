@@ -355,6 +355,136 @@ await expectRows("…nor its file", cA, "select name from storage.objects where 
 await expectRows("finance cannot change visibility", finance, "update documents set client_visible = true where id = $1 returning id", 0, [D("c")]);
 await expectError("anonymous cannot record documents", "anon", rec, /permission denied/, [D(1), sA.id, "other", pth(D(1), "x.pdf"), "x.pdf", null, null]);
 
+console.log("\nStatus engine (0010):");
+const ops = await user("ops@ngb.test", "ops_manager", ngb);
+const transport = await user("transport@ngb.test", "transport_coord", ngb);
+const driver = await user("driver@ngb.test", "driver", ngb);
+const ago = (h) => new Date(Date.now() - h * 3600e3).toISOString();
+const arr = (xs) => (xs ? `{${xs.join(",")}}` : null);
+// record_milestone with named options
+const MS = `select * from record_milestone($1::uuid, $2::milestone_type, $3::timestamptz, $4::uuid[], $5, $6::location_kind,
+  $7, $8, $9::boolean, $10::uuid[], $11, $12, $13)`;
+const msArgs = (ship, type, at, o = {}) => [ship, type, at, arr(o.containers), o.location ?? null, o.kind ?? null,
+  o.note ?? null, o.internal ?? null, o.visible ?? null, arr(o.evidence), o.seal ?? null, o.override ?? null, o.key ?? null];
+const ms = (name, uid, ship, type, at, o) => expectOk(name, uid, MS, msArgs(ship, type, at, o));
+const msErr = (name, uid, ship, type, at, o, re) => expectError(name, uid, MS, re, msArgs(ship, type, at, o));
+const statusOf = async (id) => (await db.query("select overall_status, customs_status, actual_vessel_arrival from shipments where id = $1", [id])).rows[0];
+const contOf = async (id) => (await db.query("select * from containers where id = $1", [id])).rows[0];
+const [c1, c2] = (await db.query("select id from containers where shipment_id = $1 order by container_number", [sA.id])).rows.map((r) => r.id);
+
+await expectRows("catalogue readable by staff", doc, "select 1 from milestone_catalogue", 24);
+await expectRows("catalogue readable by clients (labels)", cA, "select 1 from milestone_catalogue", 24);
+await expectError("catalogue cannot be changed by admin", admin, "update milestone_catalogue set allowed_roles = '{client}'", /permission denied/);
+await expectError("anonymous cannot record milestones", "anon", MS, /permission denied/, msArgs(sA.id, "shipment_confirmed", ago(1)));
+await expectError("nobody can insert events directly", admin,
+  "insert into milestone_events (shipment_id, batch_id, milestone_type, event_at) values ($1, gen_random_uuid(), 'delivered', now())", /permission denied/, [sA.id]);
+await expectError("internal status helper is not callable", admin, "select private.refresh_shipment_status($1)", /permission denied/, [sA.id]);
+
+await msErr("client cannot record milestones", cA, sA.id, "shipment_confirmed", ago(1), {}, /not allowed/);
+await msErr("finance cannot record milestones", finance, sA.id, "shipment_confirmed", ago(1), {}, /not allowed|cannot record/);
+await msErr("clearing agent cannot confirm a shipment (role matrix)", agent, sA.id, "shipment_confirmed", ago(1), {}, /cannot record/);
+await msErr("milestones need a confirmed shipment", agent, sA.id, "vessel_arrived", ago(1), { location: "Dar es Salaam" }, /Confirm the shipment/);
+await msErr("event time in the future is rejected", doc, sA.id, "shipment_confirmed", new Date(Date.now() + 3600e3).toISOString(), {}, /future/);
+await ms("doc officer confirms shipment A", doc, sA.id, "shipment_confirmed", ago(100));
+(await statusOf(sA.id)).overall_status === "registered" ? ok("documents complete → shipment registered") : bad("confirm", JSON.stringify(await statusOf(sA.id)));
+await expectRows("client A sees the confirmation", cA, "select 1 from milestone_events where shipment_id = $1", 1, [sA.id]);
+await expectRows("client B does not (AC-05)", cB, "select 1 from milestone_events", 0);
+await msErr("confirming twice is not a valid transition", doc, sA.id, "shipment_confirmed", ago(99), {}, /Not allowed now/);
+
+await msErr("vessel arrival needs a location", agent, sA.id, "vessel_arrived", ago(90), {}, /location/);
+await msErr("agent cannot record on an unassigned shipment", agent, sB.id, "vessel_arrived", ago(90), { location: "Dar es Salaam" }, /not found/);
+await ms("assigned clearing agent records vessel arrival", agent, sA.id, "vessel_arrived", ago(90), { location: "Dar es Salaam port" });
+let st = await statusOf(sA.id);
+st.overall_status === "vessel_arrived" && st.actual_vessel_arrival ? ok("vessel arrival moves every container + sets actual arrival") : bad("vessel", JSON.stringify(st));
+
+await ms("agent discharges container 1 only", agent, sA.id, "container_discharged", ago(80), { containers: [c1], location: "TICTS terminal", kind: "terminal" });
+const k1 = await contOf(c1), k2 = await contOf(c2);
+k1.operational_status === "container_discharged" && k1.discharge_at && k2.operational_status === "vessel_arrived"
+  ? ok("containers move independently (AC-02)") : bad("per container", JSON.stringify([k1.operational_status, k2.operational_status]));
+(await statusOf(sA.id)).overall_status === "vessel_arrived" ? ok("overall status = least-advanced container") : bad("overall", (await statusOf(sA.id)).overall_status);
+await msErr("container 2 cannot skip discharge", agent, sA.id, "port_processing_started", ago(79), { containers: [c2] }, /Not allowed now.*vessel_arrived/);
+await msErr("agent cannot override the workflow", agent, sA.id, "port_processing_started", ago(79), { containers: [c2], override: "urgent" }, /Only an operations manager/);
+await msErr("a milestone cannot move a container backwards", agent, sA.id, "container_discharged", ago(79), { containers: [c1], location: "x" }, /use a correction/);
+await msErr("a container of another shipment is rejected", agent, sA.id, "container_discharged", ago(79),
+  { containers: [(await db.query("select id from containers where shipment_id = $1", [sB.id])).rows[0].id], location: "x" }, /not on this shipment/);
+
+const r1 = await ms("discharge container 2 with an idempotency key", agent, sA.id, "container_discharged", ago(78), { containers: [c2], location: "TICTS", key: "tap-123" });
+const r2 = await ms("…the same request again (retry)", agent, sA.id, "container_discharged", ago(78), { containers: [c2], location: "TICTS", key: "tap-123" });
+r1?.rows[0]?.event_id && r1.rows[0].event_id === r2?.rows[0]?.event_id ? ok("retry returns the original event, nothing recorded twice") : bad("idempotency", JSON.stringify([r1?.rows, r2?.rows]));
+await expectRows("one event for that key", null, "select 1 from milestone_events where idempotency_key = 'tap-123'", 1);
+
+await ms("port processing (both containers)", agent, sA.id, "port_processing_started", ago(70), { containers: [c1, c2] });
+await ms("ready for dispatch (both)", agent, sA.id, "ready_for_dispatch", ago(60), { containers: [c1, c2] });
+await msErr("agent cannot assign trucks (role matrix)", agent, sA.id, "truck_assigned", ago(59), { containers: [c1] }, /cannot record/);
+await ms("transport coordinator assigns trucks", transport, sA.id, "truck_assigned", ago(50), { containers: [c1, c2] });
+await ms("loaded, with seal number", transport, sA.id, "loaded", ago(40), { containers: [c1, c2], seal: " ngb-seal-01 " });
+(await contOf(c1)).seal_number === "NGB-SEAL-01" && (await contOf(c1)).transport_status === "loaded" ? ok("seal and transport status updated") : bad("seal", JSON.stringify(await contOf(c1)));
+await msErr("gate-out before customs release is blocked", transport, sA.id, "gate_out", ago(30), { containers: [c1], location: "Dar ICD" }, /customs is not released/);
+await msErr("transport cannot record customs (role matrix)", transport, sA.id, "customs_released", ago(30), {}, /cannot record/);
+const ovr = await ms("ops manager overrides gate-out for container 2, with a reason", ops, sA.id, "gate_out", ago(30),
+  { containers: [c2], location: "Dar ICD", override: "Release confirmed by phone; paper copy to follow" });
+await expectRows("override is flagged with its reason", null, "select 1 from milestone_events where id = $1 and is_override and override_reason like 'Release%'", 1, [ovr?.rows[0]?.event_id]);
+await msErr("customs release cannot skip submission", agent, sA.id, "customs_released", ago(29), {}, /Not allowed now.*customs is not_started/);
+await ms("customs: entry in preparation", agent, sA.id, "customs_entry_prepared", ago(28));
+await ms("customs: submitted", agent, sA.id, "customs_submitted", ago(27));
+await ms("customs: released", agent, sA.id, "customs_released", ago(26));
+(await statusOf(sA.id)).customs_status === "released" ? ok("customs track updated") : bad("customs", JSON.stringify(await statusOf(sA.id)));
+await ms("gate-out for container 1 after release", transport, sA.id, "gate_out", ago(25), { containers: [c1], location: "Dar ICD" });
+(await contOf(c1)).location_kind === "in_transit" && (await contOf(c1)).gate_out_at ? ok("gate-out sets in-transit + gate-out time") : bad("gate out", JSON.stringify(await contOf(c1)));
+(await statusOf(sA.id)).overall_status === "in_transit" ? ok("shipment in transit") : bad("overall", (await statusOf(sA.id)).overall_status);
+
+await msErr("unassigned driver cannot record", driver, sA.id, "arrived", ago(5), { containers: [c1] }, /not found/);
+await db.query("insert into shipment_assignments (shipment_id, user_id) values ($1, $2)", [sA.id, driver]);
+await msErr("driver cannot record port milestones", driver, sA.id, "ready_for_dispatch", ago(5), { containers: [c1] }, /cannot record/);
+await ms("driver records a border checkpoint", driver, sA.id, "arrived_at_border", ago(10), { containers: [c1], location: "Rusumo" });
+await ms("driver records arrival", driver, sA.id, "arrived", ago(5), { containers: [c1], internal: "Gate guard asked for extra copy", visible: true });
+await expectRows("driver events are marked as driver source", null, "select 1 from milestone_events where source = 'driver'", 2);
+await expectRows("staff see the internal note", ops, "select 1 from milestone_internal_notes where shipment_id = $1", 1, [sA.id]);
+await expectRows("client sees no internal notes", cA, "select 1 from milestone_internal_notes", 0);
+await ms("hidden update for staff only", ops, sA.id, "update", ago(4), { note: "Checking demurrage", visible: false });
+await expectRows("hidden update is suppressed for notification", null, "select 1 from milestone_events where milestone_type = 'update' and notification_state = 'suppressed'", 1);
+const clientCount = (await as(cA, "select count(*)::int n from milestone_events")).rows[0].n;
+const staffCount = (await as(ops, "select count(*)::int n from milestone_events where shipment_id = $1", [sA.id])).rows[0].n;
+clientCount === staffCount - 1 ? ok("client does not see the hidden update") : bad("visibility", `${clientCount} vs ${staffCount}`);
+
+console.log("\nAppend-only + corrections (AC-03):");
+const evDis1 = (await db.query("select id, event_at from milestone_events where container_id = $1 and milestone_type = 'container_discharged'", [c1])).rows[0];
+await expectError("events cannot be edited", null, "update milestone_events set public_note = 'x' where id = $1", /append-only/, [evDis1.id]);
+await expectError("events cannot be deleted", null, "delete from milestone_events where id = $1", /append-only/, [evDis1.id]);
+await expectOk("notification state can be updated (worker)", null, "update milestone_events set notification_state = 'sent' where id = $1", [evDis1.id]);
+await expectError("users have no update privilege on events", ops, "update milestone_events set public_note = 'x'", /permission denied/);
+
+const CM = "select correct_milestone($1, $2, $3, $4::timestamptz, $5, $6)";
+const newAt = ago(81);
+await expectError("a correction needs a reason", agent, CM, /reason/, [evDis1.id, " ", false, newAt, null, null]);
+await expectError("client cannot correct", cA, CM, /not allowed/, [evDis1.id, "wrong time", false, newAt, null, null]);
+await expectError("another staff member cannot correct someone else's event", transport, CM, /Only the person/, [evDis1.id, "wrong time", false, newAt, null, null]);
+await expectOk("recorder corrects the discharge time within 24 h", agent, CM, [evDis1.id, "Terminal report shows 1 h earlier", false, newAt, null, null]);
+await expectRows("original is kept; correction is a new row", null, "select 1 from milestone_events where id = $1 and event_at = $2", 1, [evDis1.id, evDis1.event_at]);
+await expectRows("timeline shows the corrected time", ops, "select 1 from milestone_timeline where id = $1 and is_corrected and event_at = $2 and original_event_at = $3", 1, [evDis1.id, newAt, evDis1.event_at]);
+Math.abs(new Date((await contOf(c1)).discharge_at) - new Date(newAt)) < 1000 ? ok("container discharge time follows the correction") : bad("discharge_at", String((await contOf(c1)).discharge_at));
+await expectError("corrections are corrected via the original", ops, CM, /original/,
+  [(await db.query("select id from milestone_events where correction_of_event_id = $1", [evDis1.id])).rows[0].id, "again", false, newAt, null, null]);
+
+const evLoaded1 = (await db.query("select id from milestone_events where container_id = $1 and milestone_type = 'loaded'", [c1])).rows[0].id;
+await expectError("an event with later milestones cannot be cancelled", ops, CM, /Later milestones/, [evLoaded1, "wrong", true, null, null, null]);
+const evRelease = (await db.query("select id from milestone_events where milestone_type = 'customs_released' and shipment_id = $1", [sA.id])).rows[0].id;
+await expectError("customs release cannot be cancelled after a gate-out", ops, CM, /Later milestones/, [evRelease, "wrong", true, null, null, null]);
+const evGate2 = ovr?.rows[0]?.event_id;
+await expectError("transport coordinator cannot cancel the ops manager's event", transport, CM, /Only the person/, [evGate2, "mistake", true, null, null, null]);
+await expectOk("ops manager cancels container 2 gate-out", ops, CM, [evGate2, "Truck did not leave; recorded by mistake", true, null, null, null]);
+const k2b = await contOf(c2);
+k2b.operational_status === "loaded" && k2b.gate_out_at === null && k2b.transport_status === "loaded"
+  ? ok("cancel restores container 2 exactly (status, time, transport)") : bad("void restore", JSON.stringify(k2b));
+(await statusOf(sA.id)).overall_status === "loaded" ? ok("overall status recomputed (least advanced = loaded)") : bad("overall", (await statusOf(sA.id)).overall_status);
+await expectRows("timeline shows it cancelled, with reason", cA, "select 1 from milestone_timeline where id = $1 and is_voided and void_reason like 'Truck%'", 1, [evGate2]);
+await expectError("cannot cancel twice", ops, CM, /already been cancelled/, [evGate2, "again", true, null, null, null]);
+await ms("container 2 gate-out recorded again, normally", transport, sA.id, "gate_out", ago(3), { containers: [c2], location: "Dar ICD" });
+
+console.log("\nAwaiting documents:");
+await ms("doc officer confirms the registered shipment with missing documents", doc, newId, "shipment_confirmed", ago(2));
+(await statusOf(newId)).overall_status === "awaiting_documents" ? ok("missing documents → awaiting documents") : bad("awaiting", (await statusOf(newId)).overall_status);
+
 console.log("\nProfile sync:");
 await expectRows("user with no profile sees no shipments", nobody, "select id from shipments", 0);
 await db.query("update auth.users set raw_app_meta_data = raw_app_meta_data || $2::jsonb where id = $1",

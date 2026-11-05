@@ -80,7 +80,8 @@ export const action = async (who, name, args, page) => post(who, name, await enc
 /** Call a form action (…, prevState, FormData) exactly as the browser does. */
 export async function formAction(who, name, args, fields, page) {
   const form = new FormData();
-  for (const [k, v] of Object.entries(fields)) form.append(k, v);
+  // an array value appends the field several times (checkbox groups)
+  for (const [k, v] of Object.entries(fields)) for (const x of [].concat(v)) form.append(k, x);
   return post(who, name, await encodeReply([...args, form]), page);
 }
 

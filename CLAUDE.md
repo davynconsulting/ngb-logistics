@@ -54,6 +54,11 @@ Don't generate the whole app in one go. **Don't make destructive database change
   - Verify and reject only through the `review_document` RPC.
   - The checklist and `shipments.doc_status` are kept up to date by triggers. Never set them by hand.
   - Downloads go through `/documents/{id}`, which creates a 60-second signed URL as the user.
+- **Milestones and statuses (migration 0010):** status columns change only through `record_milestone()` / `correct_milestone()` (server actions in `lib/actions/milestones.ts`).
+  - The rules (preconditions, effects, allowed roles) are rows in `milestone_catalogue`. `lib/domain/milestones.ts` mirrors them for UI hints only.
+  - `milestone_events` is append-only. A correction or cancellation is a new row. Read through the `milestone_timeline` view, which applies the latest correction.
+  - The shipment's overall status is the least-advanced container. Gate-out needs customs released. Out-of-order steps need an ops manager/admin override with a reason.
+  - Forms that create the default time or the idempotency key render on the client only (`useSyncExternalStore`), because the server runs in UTC.
 - **Testing server actions over HTTP:** POST to the page with a `Next-Action: <id>` header. Get the ID from `.next/server/server-reference-manifest.json`. Encode the arguments with React's `encodeReply` from `next/dist/compiled/react-server-dom-turbopack/client.node.js`. Field order matters when an action takes a FormData, so don't hand-build the encoding.
 - **Rendered HTML contains `<!-- -->`** between adjacent text nodes (e.g. `Earlier versions (<!-- -->1<!-- -->)`). Strip these before matching text in tests.
 - **Forms** use shadcn's `field` component with react-hook-form + zod, not the older `form` component.
@@ -70,7 +75,7 @@ Don't generate the whole app in one go. **Don't make destructive database change
   - This harness stands in for pgTAP, which would need local Docker.
 - `npm run test:live`: real flows against the **dev** project and a local production server.
   - First run `npm run build && npx next start -p 3123`.
-  - Suites are in `tests/live`: auth/routing, admin flows, documents.
+  - Suites are in `tests/live`: auth/routing, admin flows, documents, milestones.
   - It calls the real server actions over HTTP and adds fictional test data each run.
   - Supabase allows about 30 sign-ins per 5 minutes per IP, so each user signs in once per run. Don't run it twice back-to-back.
 - Migrations live in `supabase/migrations/`. Supabase CLI v3 targets a local database by default, so always pass **`--remote`**:

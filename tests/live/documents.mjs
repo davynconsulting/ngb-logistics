@@ -35,7 +35,7 @@ const { data: dar } = await svc.from("ports").select("id").eq("code", "TZDAR").s
 const reg = await doc.api.rpc("register_shipment", {
   p_shipment: { client_id: akagera.id, bl_number: `TESTBLDOC${stamp}`, origin_port_id: dar.id, destination_country: "RW",
     destination_city: "Kigali", cargo_description: "Document workflow test cargo (fictional)" },
-  p_containers: [{ container_number: cn(+stamp + 500000), size_type: "40HC" }] });
+  p_containers: [{ container_number: cn(+stamp % 500000), size_type: "40HC" }] });
 if (reg.error) throw new Error("fixture: " + reg.error.message);
 const { data: ship } = await svc.from("shipments").select("id, client_id, shipment_reference, containers(id, container_number)")
   .eq("id", reg.data[0].shipment_id).single();
