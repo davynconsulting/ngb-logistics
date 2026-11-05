@@ -5,7 +5,7 @@ import { UserMenu } from "./user-menu";
 /** Top bar for the portal and admin areas. The user part streams in (it reads the session). */
 export function AppHeader({ home, label }: { home: string; label: string }) {
   return (
-    <header className="sticky top-0 z-10 bg-primary text-primary-foreground shadow-sm">
+    <header className="sticky top-0 z-10 bg-primary text-primary-foreground shadow-sm print:hidden">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
         <Link href={home} className="shrink-0 leading-tight">
           <span className="block text-base font-semibold tracking-tight">

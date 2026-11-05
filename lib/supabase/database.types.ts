@@ -162,6 +162,54 @@ export type Database = {
           },
         ]
       }
+      credit_notes: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string | null
+          credit_note_number: string
+          currency: string
+          id: string
+          invoice_id: string
+          reason: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by?: string | null
+          credit_note_number: string
+          currency: string
+          id?: string
+          invoice_id: string
+          reason: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          credit_note_number?: string
+          currency?: string
+          id?: string
+          invoice_id?: string
+          reason?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_notes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_notes_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       document_requirements: {
         Row: {
           client_note: string | null
@@ -202,6 +250,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      document_sequences: {
+        Row: {
+          kind: string
+          last_number: number
+          year: number
+        }
+        Insert: {
+          kind: string
+          last_number?: number
+          year: number
+        }
+        Update: {
+          kind?: string
+          last_number?: number
+          year?: number
+        }
+        Relationships: []
       }
       documents: {
         Row: {
@@ -573,6 +639,183 @@ export type Database = {
             columns: ["sla_rule_id"]
             isOneToOne: false
             referencedRelation: "sla_rules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoice_lines: {
+        Row: {
+          amount: number | null
+          description: string
+          id: string
+          invoice_id: string
+          line_no: number
+          quantity: number
+          tax_amount: number | null
+          tax_rate: number
+          unit_price: number
+        }
+        Insert: {
+          amount?: number | null
+          description: string
+          id?: string
+          invoice_id: string
+          line_no: number
+          quantity: number
+          tax_amount?: number | null
+          tax_rate?: number
+          unit_price: number
+        }
+        Update: {
+          amount?: number | null
+          description?: string
+          id?: string
+          invoice_id?: string
+          line_no?: number
+          quantity?: number
+          tax_amount?: number | null
+          tax_rate?: number
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_lines_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoices: {
+        Row: {
+          amount_credited: number
+          amount_paid: number
+          balance_due: number
+          client_id: string
+          client_note: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          dispute_reason: string | null
+          disputed_at: string | null
+          disputed_by: string | null
+          due_date: string | null
+          id: string
+          invoice_number: string | null
+          issue_date: string | null
+          issued_at: string | null
+          issued_by: string | null
+          payment_instructions: string | null
+          shipment_id: string
+          status: Database["public"]["Enums"]["invoice_status"]
+          subtotal: number
+          tax_total: number
+          total: number
+          updated_at: string
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+        }
+        Insert: {
+          amount_credited?: number
+          amount_paid?: number
+          balance_due?: number
+          client_id: string
+          client_note?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency: string
+          dispute_reason?: string | null
+          disputed_at?: string | null
+          disputed_by?: string | null
+          due_date?: string | null
+          id?: string
+          invoice_number?: string | null
+          issue_date?: string | null
+          issued_at?: string | null
+          issued_by?: string | null
+          payment_instructions?: string | null
+          shipment_id: string
+          status?: Database["public"]["Enums"]["invoice_status"]
+          subtotal?: number
+          tax_total?: number
+          total?: number
+          updated_at?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Update: {
+          amount_credited?: number
+          amount_paid?: number
+          balance_due?: number
+          client_id?: string
+          client_note?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          dispute_reason?: string | null
+          disputed_at?: string | null
+          disputed_by?: string | null
+          due_date?: string | null
+          id?: string
+          invoice_number?: string | null
+          issue_date?: string | null
+          issued_at?: string | null
+          issued_by?: string | null
+          payment_instructions?: string | null
+          shipment_id?: string
+          status?: Database["public"]["Enums"]["invoice_status"]
+          subtotal?: number
+          tax_total?: number
+          total?: number
+          updated_at?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_disputed_by_fkey"
+            columns: ["disputed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_issued_by_fkey"
+            columns: ["issued_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_voided_by_fkey"
+            columns: ["voided_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1112,6 +1355,112 @@ export type Database = {
           {
             foreignKeyName: "organizations_account_manager_fk"
             columns: ["account_manager_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_reviews: {
+        Row: {
+          decision: Database["public"]["Enums"]["payment_decision"]
+          payment_id: string
+          reason: string | null
+          receipt_number: string | null
+          reviewed_at: string
+          reviewed_by: string | null
+        }
+        Insert: {
+          decision: Database["public"]["Enums"]["payment_decision"]
+          payment_id: string
+          reason?: string | null
+          receipt_number?: string | null
+          reviewed_at?: string
+          reviewed_by?: string | null
+        }
+        Update: {
+          decision?: Database["public"]["Enums"]["payment_decision"]
+          payment_id?: string
+          reason?: string | null
+          receipt_number?: string | null
+          reviewed_at?: string
+          reviewed_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_reviews_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: true
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_reviews_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payments: {
+        Row: {
+          amount: number
+          currency: string
+          id: string
+          invoice_id: string
+          method: Database["public"]["Enums"]["payment_method"]
+          note: string | null
+          paid_at: string
+          receipt_document_id: string | null
+          recorded_at: string
+          recorded_by: string | null
+          transaction_reference: string | null
+        }
+        Insert: {
+          amount: number
+          currency: string
+          id?: string
+          invoice_id: string
+          method: Database["public"]["Enums"]["payment_method"]
+          note?: string | null
+          paid_at: string
+          receipt_document_id?: string | null
+          recorded_at?: string
+          recorded_by?: string | null
+          transaction_reference?: string | null
+        }
+        Update: {
+          amount?: number
+          currency?: string
+          id?: string
+          invoice_id?: string
+          method?: Database["public"]["Enums"]["payment_method"]
+          note?: string | null
+          paid_at?: string
+          receipt_document_id?: string | null
+          recorded_at?: string
+          recorded_by?: string | null
+          transaction_reference?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_receipt_document_id_fkey"
+            columns: ["receipt_document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_recorded_by_fkey"
+            columns: ["recorded_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -1878,6 +2227,23 @@ export type Database = {
         Args: { p_exception_id: string; p_note: string }
         Returns: undefined
       }
+      issue_credit_note: {
+        Args: {
+          p_amount: number
+          p_currency: string
+          p_invoice_id: string
+          p_reason: string
+        }
+        Returns: string
+      }
+      issue_invoice: {
+        Args: {
+          p_due_date?: string
+          p_invoice_id: string
+          p_issue_date?: string
+        }
+        Returns: string
+      }
       open_exception: {
         Args: {
           p_client_message?: string
@@ -1932,6 +2298,18 @@ export type Database = {
           new_status: string
         }[]
       }
+      record_payment: {
+        Args: {
+          p_amount: number
+          p_currency: string
+          p_invoice_id: string
+          p_method: Database["public"]["Enums"]["payment_method"]
+          p_note?: string
+          p_paid_at: string
+          p_reference?: string
+        }
+        Returns: string
+      }
       register_push_subscription: {
         Args: {
           p_auth: string
@@ -1968,6 +2346,14 @@ export type Database = {
         }
         Returns: undefined
       }
+      review_payment: {
+        Args: {
+          p_decision: Database["public"]["Enums"]["payment_decision"]
+          p_payment_id: string
+          p_reason?: string
+        }
+        Returns: string
+      }
       revise_eta: {
         Args: {
           p_client_visible?: boolean
@@ -1990,8 +2376,23 @@ export type Database = {
           opened: number
         }[]
       }
+      save_invoice_draft: {
+        Args: {
+          p_client_note?: string
+          p_currency: string
+          p_invoice_id: string
+          p_lines: Json
+          p_payment_instructions?: string
+          p_shipment_id: string
+        }
+        Returns: string
+      }
       set_exception_client_message: {
         Args: { p_exception_id: string; p_message: string; p_visible: boolean }
+        Returns: undefined
+      }
+      set_invoice_dispute: {
+        Args: { p_invoice_id: string; p_open: boolean; p_reason?: string }
         Returns: undefined
       }
       set_my_contact_sharing: {
@@ -2007,6 +2408,10 @@ export type Database = {
           p_owner_id?: string
           p_severity?: Database["public"]["Enums"]["exception_severity"]
         }
+        Returns: undefined
+      }
+      void_invoice: {
+        Args: { p_invoice_id: string; p_reason: string }
         Returns: undefined
       }
     }
@@ -2100,6 +2505,14 @@ export type Database = {
         | "overdue"
         | "disputed"
         | "credit_approved"
+      invoice_status:
+        | "draft"
+        | "issued"
+        | "partially_paid"
+        | "paid"
+        | "overdue"
+        | "disputed"
+        | "void"
       location_kind: "terminal" | "icd" | "in_transit" | "destination" | "depot"
       milestone_type:
         | "shipment_confirmed"
@@ -2129,6 +2542,13 @@ export type Database = {
       notification_audience: "client" | "staff"
       notification_channel: "push" | "whatsapp"
       notification_state: "pending" | "sent" | "failed" | "suppressed"
+      payment_decision: "verified" | "rejected"
+      payment_method:
+        | "bank_transfer"
+        | "mobile_money"
+        | "cash"
+        | "card"
+        | "other"
       return_status:
         | "not_due"
         | "awaiting_empty_return"
@@ -2394,6 +2814,15 @@ export const Constants = {
         "disputed",
         "credit_approved",
       ],
+      invoice_status: [
+        "draft",
+        "issued",
+        "partially_paid",
+        "paid",
+        "overdue",
+        "disputed",
+        "void",
+      ],
       location_kind: ["terminal", "icd", "in_transit", "destination", "depot"],
       milestone_type: [
         "shipment_confirmed",
@@ -2424,6 +2853,14 @@ export const Constants = {
       notification_audience: ["client", "staff"],
       notification_channel: ["push", "whatsapp"],
       notification_state: ["pending", "sent", "failed", "suppressed"],
+      payment_decision: ["verified", "rejected"],
+      payment_method: [
+        "bank_transfer",
+        "mobile_money",
+        "cash",
+        "card",
+        "other",
+      ],
       return_status: [
         "not_due",
         "awaiting_empty_return",

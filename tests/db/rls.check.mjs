@@ -960,6 +960,130 @@ await expectRows("…and the job disappears", driver, "select 1 from driver_jobs
 await expectError("…and nothing more can be recorded", driver, MS, /not found/, msArgs(sT, "update", ago(0.01), { containers: [t1], internal: "x" }));
 await db.query("update transport_assignments set status = 'active', cancelled_at = null, cancel_reason = null where id = $1", [a1]);
 
+console.log("\nFinance (0021, AC-11/12):");
+{ // own scope: names below are local to the finance checks
+const SD = "select save_invoice_draft($1, $2, $3, $4::jsonb, $5, $6) id";
+const lines = (...ls) => JSON.stringify(ls.map(([description, quantity, unit_price, tax_rate]) => ({ description, quantity, unit_price, tax_rate })));
+const inv = async (id) => (await db.query("select * from invoices where id = $1", [id])).rows[0];
+const finOf = async (ship) => (await db.query("select finance_status from shipments where id = $1", [ship])).rows[0].finance_status;
+const yr = new Date().getFullYear();
+
+await expectError("doc officer cannot prepare invoices", doc, SD, /Only finance/, [null, sT, "USD", lines(["Clearing", "1", "100.00", "0"]), null, null]);
+await expectError("clients cannot prepare invoices", cA, SD, /Only finance/, [null, sT, "USD", lines(["Clearing", "1", "100.00", "0"]), null, null]);
+await expectError("unsupported currency", finance, SD, /currency/, [null, sT, "EUR", lines(["Clearing", "1", "100.00", "0"]), null, null]);
+await expectError("prices have at most 2 decimals", finance, SD, /at most 2 decimals/, [null, sT, "USD", lines(["Clearing", "1", "100.005", "0"]), null, null]);
+await expectError("quantity must be above zero", finance, SD, /quantities above 0/, [null, sT, "USD", lines(["Clearing", "0", "100.00", "0"]), null, null]);
+await expectError("tax rate 0 to 100", finance, SD, /tax rate 0 to 100/, [null, sT, "USD", lines(["Clearing", "1", "100.00", "120"]), null, null]);
+await expectError("lines must be a list", finance, SD, /between 1 and 50 lines/, [null, sT, "USD", JSON.stringify({ a: 1 }), null, null]);
+const d1 = (await expectOk("finance drafts an invoice: zero-rated transit + taxed local handling", finance, SD,
+  [null, sT, "USD", lines(["Road transit Dar → Kigali (zero-rated)", "1", "1500.00", "0"], ["Port handling", "2", "250.50", "18"]),
+    "Thank you for your business", "Bank: NGB Logistics (fictional), acc 000-111"]))?.rows[0]?.id;
+let I = await inv(d1);
+I?.subtotal === "2001.00" && I.tax_total === "90.18" && I.total === "2091.18" && I.invoice_number === null && I.status === "draft" && I.client_id === A
+  ? ok("totals computed by the database: 2001.00 + 90.18 tax = 2091.18; no number while draft") : bad("draft totals", JSON.stringify(I));
+const r3 = (await expectOk("rounding is per line, half away from zero", finance, SD,
+  [null, sT, "USD", lines(["Fuel surcharge", "0.333", "10.00", "18"]), null, null]))?.rows[0]?.id;
+I = await inv(r3);
+I?.subtotal === "3.33" && I.tax_total === "0.60" && I.total === "3.93" ? ok("…0.333 × 10.00 = 3.33; 18% → 0.60") : bad("rounding", JSON.stringify(I));
+await expectRows("clients cannot read invoices", cA, "select 1 from invoices", 0);
+await expectRows("…nor other staff (doc officer, agent, driver)", doc, "select 1 from invoices union all select 1 from invoice_lines", 0);
+await expectRows("…driver", driver, "select 1 from invoices", 0);
+await expectRows("ops manager reads them", ops, "select 1 from invoices where id = $1", 1, [d1]);
+await expectError("nobody writes invoices directly", finance, "insert into invoices (client_id, shipment_id, currency) values ($1, $2, 'USD')", /permission denied/, [A, sT]);
+await expectError("…or payments", finance, "insert into payments (invoice_id, amount, currency, paid_at, method) values ($1, 1, 'USD', now(), 'cash')", /permission denied/, [d1]);
+await expectOk("finance edits the draft (lines replaced)", finance, SD,
+  [d1, sT, "USD", lines(["Road transit Dar → Kigali (zero-rated)", "1", "1500.00", "0"], ["Port handling", "2", "250.50", "18"]), null, null]);
+
+const IS = "select issue_invoice($1, $2::date, $3::date) n";
+const today = new Date().toISOString().slice(0, 10);
+const dayOff = (n) => new Date(Date.now() + n * 86400e3).toISOString().slice(0, 10);
+await expectError("doc officer cannot issue", doc, IS, /Only finance/, [d1, null, null]);
+await expectError("due date before issue date is refused", finance, IS, /due date/, [d1, today, dayOff(-1)]);
+const n1 = (await expectOk("finance issues the invoice", finance, IS, [d1, null, null]))?.rows[0]?.n;
+n1 === `INV-${yr}-00001` ? ok(`number assigned on issue, gap-free (${n1}) even after a refused attempt`) : bad("number", n1);
+I = await inv(d1);
+I.status === "issued" && I.balance_due === "2091.18" && I.issued_by === finance && I.due_date && I.issue_date
+  ? ok("issued: balance = total, issuer recorded, due date from terms (30 days by default)") : bad("issued", JSON.stringify(I));
+(await finOf(sT)) === "invoiced" ? ok("shipment finance status → invoiced") : bad("finance status", await finOf(sT));
+await expectError("an issued invoice cannot be edited", finance, SD, /Only a draft/, [d1, sT, "USD", lines(["x", "1", "1.00", "0"]), null, null]);
+await expectError("…not even directly by the database owner", null, "update invoices set total = 1, subtotal = 1, tax_total = 0 where id = $1", /cannot be edited/, [d1]);
+await expectError("…and its lines are frozen", null, "update invoice_lines set unit_price = 1 where invoice_id = $1", /only change while the invoice is a draft/, [d1]);
+await expectError("issuing twice is refused", finance, IS, /already issued/, [d1, null, null]);
+
+const RP = "select record_payment($1, $2::numeric, $3, $4::timestamptz, $5::payment_method, $6, $7) id";
+const nowIso = new Date().toISOString();
+await expectError("doc officer cannot record payments", doc, RP, /Only finance/, [d1, "100.00", "USD", nowIso, "bank_transfer", "TT-0", null]);
+await expectError("a payment in another currency is refused (no mixed currencies)", finance, RP, /in USD/, [d1, "100.00", "RWF", nowIso, "bank_transfer", "TT-0", null]);
+await expectError("more than the balance is refused", finance, RP, /more than what is left/, [d1, "2091.19", "USD", nowIso, "bank_transfer", "TT-0", null]);
+await expectError("3 decimals refused", finance, RP, /at most 2 decimals/, [d1, "10.005", "USD", nowIso, "bank_transfer", "TT-0", null]);
+await expectError("a bank transfer needs its reference", finance, RP, /reference/, [d1, "100.00", "USD", nowIso, "bank_transfer", " ", null]);
+await expectError("a payment in the future is refused", finance, RP, /not in the future/, [d1, "100.00", "USD", new Date(Date.now() + 86400e3).toISOString(), "cash", null, null]);
+const p1 = (await expectOk("finance records a partial payment (1000.00, bank transfer)", finance, RP, [d1, "1000.00", "USD", nowIso, "bank_transfer", "TT-2026-001", null]))?.rows[0]?.id;
+await expectError("the same reference twice is refused (case-insensitive)", finance, RP, /already recorded/, [d1, "10.00", "USD", nowIso, "bank_transfer", "tt-2026-001", null]);
+I = await inv(d1);
+I.balance_due === "2091.18" && I.status === "issued" ? ok("an unverified payment does not reduce the balance") : bad("pending", JSON.stringify(I));
+await expectError("recording cannot exceed balance minus payments awaiting verification", finance, RP, /awaiting verification/, [d1, "1091.19", "USD", nowIso, "cash", null, null]);
+
+const RV = "select review_payment($1, $2::payment_decision, $3) r";
+await expectError("admin cannot verify payments (finance only, AC-12)", admin, RV, /Only finance/, [p1, "verified", null]);
+await expectError("…nor the ops manager", ops, RV, /Only finance/, [p1, "verified", null]);
+const rc1 = (await expectOk("finance verifies the payment", finance, RV, [p1, "verified", null]))?.rows[0]?.r;
+rc1 === `RCPT-${yr}-00001` ? ok(`receipt number issued (${rc1})`) : bad("receipt", rc1);
+await expectRows("verification records who and when (AC-12)", null,
+  "select 1 from payment_reviews r join payments p on p.id = r.payment_id where r.payment_id = $1 and r.reviewed_by = $2 and r.reviewed_at is not null and p.transaction_reference = 'TT-2026-001'", 1, [p1, finance]);
+I = await inv(d1);
+I.amount_paid === "1000.00" && I.balance_due === "1091.18" && I.status === "partially_paid" ? ok("balance 1091.18, partially paid (AC-11)") : bad("partial", JSON.stringify(I));
+(await finOf(sT)) === "partially_paid" ? ok("shipment finance status → partially paid") : bad("finance status", await finOf(sT));
+await expectError("a payment is reviewed only once", finance, RV, /already been reviewed/, [p1, "rejected", "oops"]);
+await expectError("payments are append-only", null, "update payments set amount = 1 where id = $1", /append-only/, [p1]);
+await expectError("…and so are reviews", null, "delete from payment_reviews where payment_id = $1", /append-only/, [p1]);
+
+const p2 = (await expectOk("a mobile-money payment is recorded", finance, RP, [d1, "50.00", "USD", nowIso, "mobile_money", "MM-77", null]))?.rows[0]?.id;
+await expectError("rejecting needs a reason", finance, RV, /reason/, [p2, "rejected", null]);
+await expectOk("finance rejects it (not received)", finance, RV, [p2, "rejected", "Not on the bank statement"]);
+(await inv(d1)).balance_due === "1091.18" ? ok("a rejected payment never counts") : bad("rejected", (await inv(d1)).balance_due);
+
+const CN = "select issue_credit_note($1, $2::numeric, $3, $4) n";
+await expectError("credit more than the balance is refused", finance, CN, /more than what is left/, [d1, "1091.19", "USD", "Too much"]);
+await expectError("credit in another currency is refused", finance, CN, /USD/, [d1, "10.00", "KES", "Discount"]);
+await expectError("doc officer cannot credit", doc, CN, /Only finance/, [d1, "10.00", "USD", "Discount"]);
+const cn1 = (await expectOk("finance issues a credit note with a reason", finance, CN, [d1, "91.18", "USD", "Handling fee waived (agreed with ops)"]))?.rows[0]?.n;
+I = await inv(d1);
+cn1 === `CN-${yr}-00001` && I.amount_credited === "91.18" && I.balance_due === "1000.00" ? ok(`credit note ${cn1}; balance 1000.00`) : bad("credit", JSON.stringify([cn1, I]));
+await expectError("credit notes are append-only", null, "update credit_notes set amount = 1", /append-only/);
+
+const DS = "select set_invoice_dispute($1, $2, $3)";
+await expectError("doc officer cannot record disputes", doc, DS, /not allowed/, [d1, true, "Client disputes handling"]);
+await expectError("a dispute needs a reason", ops, DS, /reason/, [d1, true, ""]);
+await expectOk("ops manager records the client's dispute", ops, DS, [d1, true, "Client says handling was charged twice"]);
+(await inv(d1)).status === "disputed" && (await finOf(sT)) === "disputed" ? ok("invoice and shipment show disputed") : bad("dispute", (await inv(d1)).status);
+await expectOk("finance resolves it with a note", finance, DS, [d1, false, "Explained: two separate moves"]);
+await expectRows("…the resolution is in the audit log", null, "select 1 from audit_log where table_name = 'invoice_disputes' and record_id = $1 and new_data ->> 'resolution' like 'Explained%'", 1, [d1]);
+(await inv(d1)).status === "partially_paid" ? ok("…back to partially paid") : bad("resolved", (await inv(d1)).status);
+
+const p3 = (await expectOk("final payment recorded", finance, RP, [d1, "1000.00", "USD", nowIso, "bank_transfer", "TT-2026-002", null]))?.rows[0]?.id;
+await expectOk("…and verified", finance, RV, [p3, "verified", null]);
+I = await inv(d1);
+I.status === "paid" && I.balance_due === "0.00" && I.amount_paid === "2000.00" ? ok("paid in full: 2000.00 paid + 91.18 credit = 2091.18") : bad("paid", JSON.stringify(I));
+(await finOf(sT)) === "paid" ? ok("shipment finance status → paid") : bad("finance paid", await finOf(sT));
+await expectError("no more payments on a paid invoice", finance, RP, /issued, unpaid/, [d1, "1.00", "USD", nowIso, "cash", null, null]);
+await expectError("a paid invoice cannot be voided", finance, "select void_invoice($1, $2)", /payments or credit notes/, [d1, "Mistake"]);
+
+await expectOk("a draft can be voided (no number used)", finance, "select void_invoice($1, $2)", [r3, "Drafted by mistake"]);
+(await inv(r3)).status === "void" && (await inv(r3)).invoice_number === null ? ok("…void, numberless") : bad("void draft", JSON.stringify(await inv(r3)));
+await expectError("a void invoice cannot be issued", finance, IS, /already issued or void/, [r3, null, null]);
+const d2 = (await expectOk("overdue case: invoice for client B issued 40 days ago, due 10 days ago", finance, SD,
+  [null, sB.id, "RWF", lines(["Storage", "4", "25000.00", "18"]), null, null]))?.rows[0]?.id;
+const n2 = (await expectOk("…issued", finance, IS, [d2, dayOff(-40), dayOff(-10)]))?.rows[0]?.n;
+n2 === `INV-${yr}-00002` ? ok("next number is sequential (00002)") : bad("seq", n2);
+(await inv(d2)).status === "overdue" && (await finOf(sB.id)) === "overdue" ? ok("past due → overdue; shipment shows overdue") : bad("overdue", (await inv(d2)).status);
+await expectError("void an issued invoice needs a reason", finance, "select void_invoice($1, $2)", /reason/, [d2, ""]);
+await expectRows("client B cannot read its invoice directly either (portal functions come later)", cB, "select 1 from invoices", 0);
+await expectRows("every finance change is in the audit log", null,
+  "select distinct table_name from audit_log where table_name in ('invoices', 'invoice_lines', 'payments', 'payment_reviews', 'credit_notes')", 5);
+
+}
+
 console.log("\nSecurity invariants (all migrations):");
 const none = async (name, sql) => {
   const rows = (await db.query(sql)).rows;
@@ -998,7 +1122,8 @@ await none("sender-only functions are not callable by signed-in users",
 await none("append-only tables cannot be updated or deleted by signed-in users",
   `select table_name, privilege_type from information_schema.role_table_grants
     where grantee = 'authenticated' and table_schema = 'public' and privilege_type in ('UPDATE', 'DELETE')
-      and table_name in ('milestone_events', 'audit_log', 'eta_revisions', 'exception_updates', 'notification_delivery_attempts')`);
+      and table_name in ('milestone_events', 'audit_log', 'eta_revisions', 'exception_updates', 'notification_delivery_attempts',
+                         'payments', 'payment_reviews', 'credit_notes', 'invoices', 'invoice_lines')`);
 
 console.log("\nProfile sync:");
 await expectRows("user with no profile sees no shipments", nobody, "select id from shipments", 0);

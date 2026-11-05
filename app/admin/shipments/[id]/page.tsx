@@ -35,6 +35,9 @@ import { DocumentList } from "@/components/documents/document-list";
 import { DocumentUploadForm } from "@/components/documents/upload-form";
 import { FormAlert } from "@/components/auth/form-alert";
 import { Badge } from "@/components/ui/badge";
+import { listShipmentInvoices } from "@/lib/dal/finance";
+import { canReadFinance, canWriteFinance } from "@/lib/domain/finance";
+import { ShipmentFinance } from "@/components/finance/shipment-finance";
 
 export const metadata: Metadata = { title: "Shipment" };
 
@@ -64,12 +67,14 @@ async function ShipmentDetail({ params, searchParams }: PageProps<"/admin/shipme
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const canTransport = canAssignTransport(user.role);
   const canExceptions = canManageExceptions(user.role);
-  const [s, milestones, etaHistory, transport, exceptions, routes, drivers, staff] = await Promise.all([
+  const financeReader = canReadFinance(user.role);
+  const [s, milestones, etaHistory, transport, exceptions, routes, drivers, staff, invoices] = await Promise.all([
     getShipment(id), getMilestones(id), getEtaHistory(id), getTransport(id),
     user.role === "driver" ? Promise.resolve([]) : getShipmentExceptions(id),
     canTransport ? listRoutes() : Promise.resolve([]),
     canTransport ? listDrivers() : Promise.resolve([]),
     canExceptions ? listActiveStaff() : Promise.resolve([]),
+    financeReader ? listShipmentInvoices(id) : Promise.resolve([]),
   ]);
   if (!s) notFound(); // also when RLS hides it (e.g. not assigned to this agent)
   const tz = s.client?.timezone ?? "Africa/Kigali";
@@ -191,6 +196,11 @@ async function ShipmentDetail({ params, searchParams }: PageProps<"/admin/shipme
         {user.role !== "driver" && (
           <ExceptionPanel shipmentId={s.id} exceptions={exceptions} containers={containers} staff={staffOptions}
             user={user} timeZone={tz} milestoneLabel={milestoneLabel} canManage={canExceptions} />
+        )}
+
+        {financeReader && (
+          <ShipmentFinance shipmentId={s.id} status={s.finance_status} invoices={invoices}
+            canCreate={canWriteFinance(user.role) && s.overall_status !== "closed"} />
         )}
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
