@@ -15,7 +15,8 @@
     "db:seed": "node --env-file=.env.local scripts/seed-dev.mts",
     "test:db": "node tests/db/rls.check.mjs supabase/migrations",
     "test:live": "node --env-file=.env.local tests/live/run.mjs",
-    "notify:run": "node --env-file=.env.local scripts/notify-run.mts"
+    "notify:run": "node --env-file=.env.local scripts/notify-run.mts",
+    "check:secrets": "node --env-file-if-exists=.env.local scripts/check-bundle-secrets.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^7.0.2",

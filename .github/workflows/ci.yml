@@ -1,5 +1,5 @@
 # CI for NGB LOGISTICS
-#   checks: typecheck, lint, unit tests, database checks (PGlite), production build
+#   checks: typecheck, lint, unit tests, database checks (PGlite), production build, secret scan of the build
 #   e2e:    Playwright (mobile + desktop) against the hosted DEV Supabase project
 #
 # Repository settings needed (Settings → Secrets and variables → Actions):
@@ -46,6 +46,8 @@ jobs:
       - name: Database checks (migrations + RLS in PGlite)
         run: npm run test:db
       - run: npm run build
+      - name: No server secrets in what browsers download
+        run: npm run check:secrets
 
   e2e:
     name: Playwright (mobile + desktop)

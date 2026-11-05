@@ -12,10 +12,10 @@ test("driver on a 360 px phone: jobs, job page, kept out of admin", async ({ pag
   await expect(page.getByRole("heading", { name: "My jobs" })).toBeVisible();
   await expectNoHorizontalScroll(page);
 
-  const first = page.locator("main a[href^='/driver/jobs/']").first();
+  const first = page.locator("main a[href^='/driver/jobs/']:visible").first();
   if (await first.count()) {
     await first.click();
-    await expect(page.getByRole("heading", { name: "Delivery" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Delivery", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Report a problem" })).toBeVisible();
     await expectNoHorizontalScroll(page);
   }

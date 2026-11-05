@@ -960,6 +960,46 @@ await expectRows("…and the job disappears", driver, "select 1 from driver_jobs
 await expectError("…and nothing more can be recorded", driver, MS, /not found/, msArgs(sT, "update", ago(0.01), { containers: [t1], internal: "x" }));
 await db.query("update transport_assignments set status = 'active', cancelled_at = null, cancel_reason = null where id = $1", [a1]);
 
+console.log("\nSecurity invariants (all migrations):");
+const none = async (name, sql) => {
+  const rows = (await db.query(sql)).rows;
+  rows.length === 0 ? ok(name) : bad(name, JSON.stringify(rows).slice(0, 300));
+};
+await none("every public table has row-level security on",
+  `select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relkind in ('r', 'p') and not c.relrowsecurity`);
+await none("no policy lets everyone through (USING/WITH CHECK true)",
+  `select schemaname, tablename, policyname from pg_policies where qual = 'true' or with_check = 'true'`);
+await none("every SECURITY DEFINER function pins its search_path",
+  `select n.nspname, p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname in ('public', 'private') and p.prosecdef
+      and not exists (select 1 from unnest(coalesce(p.proconfig, '{}')) x where x like 'search_path=%')`);
+await none("anonymous users can call no function in public",
+  `select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and has_function_privilege('anon', p.oid, 'execute')`);
+await none("anonymous users have no table privileges in public",
+  `select table_name, privilege_type from information_schema.role_table_grants where grantee = 'anon' and table_schema = 'public'`);
+(await db.query("select has_schema_privilege('anon', 'private', 'usage') u")).rows[0].u === false
+  ? ok("anonymous users cannot use the private schema") : bad("private schema", "anon has usage");
+await none("views in public run with the caller's permissions (security_invoker)",
+  `select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relkind = 'v' and not coalesce(c.reloptions @> '{security_invoker=true}', false)`);
+// Signed-in users may run private helpers only if they are read-only (policy helpers) or trigger functions.
+// Allow-listed: next_shipment_reference (column default used by register_shipment; misuse only skips a number).
+await none("private functions callable by signed-in users are read-only helpers or triggers",
+  `select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and has_function_privilege('authenticated', p.oid, 'execute')
+      and p.provolatile = 'v' and p.prorettype <> 'trigger'::regtype
+      and p.proname not in ('next_shipment_reference')`);
+await none("sender-only functions are not callable by signed-in users",
+  `select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname in ('claim_notification_deliveries', 'complete_notification_delivery')
+      and has_function_privilege('authenticated', p.oid, 'execute')`);
+await none("append-only tables cannot be updated or deleted by signed-in users",
+  `select table_name, privilege_type from information_schema.role_table_grants
+    where grantee = 'authenticated' and table_schema = 'public' and privilege_type in ('UPDATE', 'DELETE')
+      and table_name in ('milestone_events', 'audit_log', 'eta_revisions', 'exception_updates', 'notification_delivery_attempts')`);
+
 console.log("\nProfile sync:");
 await expectRows("user with no profile sees no shipments", nobody, "select id from shipments", 0);
 await db.query("update auth.users set raw_app_meta_data = raw_app_meta_data || $2::jsonb where id = $1",

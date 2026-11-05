@@ -20,7 +20,8 @@ test("client portal on a 360 px phone: overview, shipment, inbox, settings (AC-1
   await expect(page).toHaveURL(/\/portal\/shipments/);
   await expectNoHorizontalScroll(page);
 
-  const first = page.locator("main li a[href^='/portal/shipments/']").first();
+  // Next keeps the previous page mounted but hidden (React Activity), so only look at visible links
+  const first = page.locator("main li a[href^='/portal/shipments/']:visible").first();
   if (await first.count()) {
     await first.click();
     await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();

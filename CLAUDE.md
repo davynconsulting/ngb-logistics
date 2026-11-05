@@ -118,9 +118,12 @@ Don't generate the whole app in one go. **Don't make destructive database change
 - `npm run test:db`: applies every migration to an in-memory Postgres (PGlite, no Docker, no network) and checks RLS, grants, RPCs and triggers as each role (`tests/db/rls.check.mjs`).
   - Add a section there for every new migration.
   - This harness stands in for pgTAP, which would need local Docker.
+  - A "Security invariants" section checks every migration together: RLS on every public table, no `true` policies, `search_path` pinned on SECURITY DEFINER functions, nothing callable or writable by `anon`, views are `security_invoker`, only read-only private helpers are callable by signed-in users, append-only tables are not updatable. Keep it passing; don't add allow-list entries without a reason in a comment.
+- `npm run check:secrets` (after `npm run build`, also in CI): scans what browsers download (`.next/static`, prerendered pages, `public/`) for server-only values from `.env.local` and for secret patterns (non-anon Supabase JWTs, `sb_secret_` keys, PEM keys). Prints names only.
 - `npm run test:live`: real flows against the **dev** project and a local production server.
   - First run `npm run build && npx next start -p 3123`.
-  - Suites are in `tests/live`: auth/routing, admin flows, documents, milestones, operations (ETA/transport/exceptions), notifications (push via a decrypting fake push service, mock WhatsApp, outage and retry).
+  - Suites are in `tests/live`: auth/routing, admin flows, documents, milestones, operations (ETA/transport/exceptions), notifications (push via a decrypting fake push service, mock WhatsApp, outage and retry), client portal, driver, PWA.
+  - Every request times out after 60 s, so a stalled connection fails a check instead of freezing the run.
   - It calls the real server actions over HTTP and adds fictional test data each run.
   - Supabase allows about 30 sign-ins per 5 minutes per IP, so each user signs in once per run. Don't run it twice back-to-back.
 - Migrations live in `supabase/migrations/`. Supabase CLI v3 targets a local database by default, so always pass **`--remote`**:
