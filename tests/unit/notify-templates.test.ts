@@ -85,6 +85,21 @@ describe("notification templates", () => {
     expect(renderNotification({ template_key: "staff.invoice_disputed", payload: p }).body).toContain("Client queries the rate");
   });
 
+  it("shipment closed: summary and the next-booking contact", () => {
+    const r = renderNotification({ template_key: "shipment.closed", payload: { ...sample, containers: 2, delivered_at: "2026-11-12T12:30:00Z",
+      booking_contact: "bookings@ngb-logistics.example (fictional)" } });
+    expect(r.title).toBe("NGB-2026-00012: shipment closed");
+    expect(r.body).toBe("All done: delivered 12 Nov, 14:30, 2 containers returned. Thank you for shipping with NGB LOGISTICS. Next booking: bookings@ngb-logistics.example (fictional)");
+    expect(r.url).toBe("/portal/shipments/NGB-2026-00012");
+  });
+
+  it("incident alert for operations", () => {
+    const r = renderNotification({ template_key: "staff.incident_reported", payload: { ...sample, incident_type: "container_damage", container: "MSKU1234565", description: "Right door dented" } });
+    expect(r.title).toBe("NGB-2026-00012: container damage");
+    expect(r.body).toBe("MSKU1234565: Right door dented. Review it before the shipment can close.");
+    expect(r.url).toBe(`/admin/shipments/${sample.shipment_id}`);
+  });
+
   it("money and calendar-day text without floats or time-zone shifts", () => {
     expect(formatMoneyText("1234567.5", "KES")).toBe("1,234,567.50 KES");
     expect(formatMoneyText("0.10", "USD")).toBe("0.10 USD");

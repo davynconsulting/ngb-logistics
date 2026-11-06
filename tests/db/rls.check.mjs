@@ -682,7 +682,7 @@ await expectRows("dispatch risk opened (ready > 24 h, not gated out)", null,
   "select 1 from exceptions where dedup_key = $1 and status = 'open' and exception_type = 'dispatch_risk'", 1, [`dispatch:${s1}`]);
 // empty return overdue (container 1 of shipment A, delivered by the driver)
 await ms("driver records delivery", driver, sA.id, "delivered", ago(48), { containers: [c1] });
-await expectOk("return deadline set (yesterday)", doc, "update containers set return_deadline = current_date - 1 where id = $1", [c1]);
+await expectOk("return deadline set (yesterday)", doc, "select set_container_return_terms(array[$1]::uuid[], (current_date - 1)::timestamptz)", [c1]);
 await as(ops, SCAN);
 await expectRows("return overdue exception opened", null,
   "select 1 from exceptions where dedup_key = $1 and status = 'open' and exception_type = 'return_overdue'", 1, [`empty_return:${c1}`]);
@@ -1203,6 +1203,130 @@ await expectError("the reminder log is append-only", null, "delete from invoice_
 await expectError("…and unique per invoice and stage", null, "insert into invoice_reminders (invoice_id, stage, days_from_due, balance_due, currency) values ($1, 7, 10, 1, 'RWF')", /duplicate key/, [d2]);
 await expectRows("clients cannot change their own reminder setting (RLS: no row updated)", cB, "update organizations set payment_reminders = false where id = $1 returning 1", 0, [B]);
 (await db.query("select payment_reminders from organizations where id = $1", [B])).rows[0].payment_reminders === true ? ok("…still on") : bad("client toggled", "");
+}
+
+console.log("\nContainer return, incidents and closure (0024, AC-14/15):");
+{
+const L = { A:10,B:12,C:13,D:14,E:15,F:16,G:17,H:18,I:19,J:20,K:21,L:23,M:24,N:25,O:26,P:27,Q:28,R:29,S:30,T:31,U:32,V:34,W:35,X:36,Y:37,Z:38 };
+const cnum = (b) => { let t = 0; for (let i = 0; i < 10; i++) t += (L[b[i]] ?? +b[i]) * 2 ** i; return b + ((t % 11) % 10); };
+const okC = await expectOk("fixture: shipment with 2 containers for closure", doc, reg,
+  [shipJson("TESTBL-CLS"), JSON.stringify([{ container_number: cnum("CLSU100000") }, { container_number: cnum("CLSU100001") }])]);
+const sC = okC?.rows[0]?.shipment_id;
+const [k1, k2] = (await db.query("select id from containers where shipment_id = $1 order by container_number", [sC])).rows.map((r) => r.id);
+const quiet = async (uid, type, at, o) => { try { await as(uid, MS, msArgs(sC, type, at, o)); } catch (e) { bad(`fixture ${type}`, e.message); } };
+await quiet(doc, "shipment_confirmed", ago(200));
+await quiet(ops, "vessel_arrived", ago(190), { location: "Dar es Salaam" });
+await quiet(ops, "container_discharged", ago(180), { containers: [k1, k2], location: "TICTS" });
+await quiet(ops, "port_processing_started", ago(170), { containers: [k1, k2] });
+await quiet(ops, "ready_for_dispatch", ago(160), { containers: [k1, k2] });
+for (const m of ["customs_entry_prepared", "customs_submitted", "customs_released"]) await quiet(ops, m, ago(150));
+try { await as(transport, AT, atArgs(sC, [k1, k2], { truck: "T 300 CLS", driverName: "Jean B. (fictional)" })); } catch (e) { bad("fixture truck", e.message); }
+await quiet(transport, "loaded", ago(140), { containers: [k1, k2] });
+await quiet(transport, "gate_out", ago(130), { containers: [k1, k2], location: "Dar ICD" });
+await quiet(transport, "arrived", ago(60), { containers: [k1, k2] });
+const st = async () => (await db.query("select overall_status, return_status, finance_status, closed_at, closed_by, has_open_exception from shipments where id = $1", [sC])).rows[0];
+const ct = async (id) => (await db.query("select operational_status, return_status, delivery_status, condition, return_depot, return_charges_note from containers where id = $1", [id])).rows[0];
+
+const RT = "select set_container_return_terms($1::uuid[], $2::timestamptz, $3, $4)";
+const yesterday = new Date(Date.now() - 864e5).toISOString(), nextWeek = new Date(Date.now() + 7 * 864e5).toISOString();
+await expectError("clients cannot set return terms", cA, RT, /not allowed/, [`{${k1}}`, nextWeek, null, null]);
+await expectError("…nor drivers", driver, RT, /not allowed/, [`{${k1}}`, nextWeek, null, null]);
+await expectError("return deadline is no longer editable directly", doc, "update containers set return_deadline = now() where id = $1", /permission denied/, [k1]);
+await expectError("containers of two shipments at once are refused", transport, RT, /not found/, [`{${k1},${t1}}`, nextWeek, null, null]);
+await expectOk("terms before delivery: deadline, depot, known charges", transport, RT, [`{${k1},${k2}}`, nextWeek, "Kigali ICD empty depot", "Detention USD 40/day after the deadline (fictional)"]);
+(await ct(k1)).return_status === "not_due" && (await ct(k1)).return_charges_note?.startsWith("Detention") ? ok("…not yet delivered: return not due; charges kept") : bad("pre-delivery", JSON.stringify(await ct(k1)));
+await quiet(transport, "delivered", ago(50), { containers: [k1, k2] });
+(await ct(k1)).return_status === "awaiting_empty_return" && (await st()).overall_status === "delivered" ? ok("delivered: awaiting empty return; delivery and return tracked separately (AC-14)") : bad("delivered", JSON.stringify(await ct(k1)));
+await expectOk("deadline moved to yesterday for container 1", ops, RT, [`{${k1}}`, yesterday, null, null]);
+(await ct(k1)).return_status === "return_overdue" && (await ct(k2)).return_status === "awaiting_empty_return" && (await st()).return_status === "return_overdue"
+  ? ok("past the deadline → container 1 return overdue; shipment return status overdue") : bad("overdue", JSON.stringify([await ct(k1), await ct(k2)]));
+await expectOk("deadline extended", ops, RT, [`{${k1}}`, nextWeek, null, null]);
+(await ct(k1)).return_status === "awaiting_empty_return" ? ok("…extended → awaiting return again") : bad("extend", (await ct(k1)).return_status);
+await db.query("update containers set return_deadline = now() - interval '1 hour' where id = $1", [k1]);
+(await db.query("select private.return_check() n")).rows[0].n >= 1 && (await ct(k1)).return_status === "return_overdue"
+  ? ok("the hourly check marks a passed deadline overdue") : bad("return_check", (await ct(k1)).return_status);
+
+const CC = "select record_container_condition($1, $2, $3) id";
+await expectError("condition: doc officer not allowed", doc, CC, /not allowed/, [k1, "sound", null]);
+await expectError("damage needs a description", transport, CC, /Describe the damage/, [k1, "damaged", ""]);
+await expectError("unknown condition refused", transport, CC, /Choose the condition/, [k1, "shiny", null]);
+await expectOk("container 2 returned sound", transport, CC, [k2, "sound", null]);
+const autoInc = (await expectOk("container 1 has a dented door", transport, CC, [k1, "damaged", "Right door dented, seal intact"]))?.rows[0]?.id;
+const ai = (await db.query("select incident_type, status, container_id from incidents where id = $1", [autoInc])).rows[0];
+ai?.incident_type === "container_damage" && ai.status === "open" && ai.container_id === k1 ? ok("damage opened a container-damage incident automatically") : bad("auto incident", JSON.stringify(ai));
+await expectRows("operations manager and shipment owner were alerted", null,
+  "select 1 from notifications where event_key = $1 and template_key = 'staff.incident_reported' and recipient_id = $2", 1, [`incident:${autoInc}`, ops]);
+
+const RI = "select report_incident($1, $2, $3::incident_type, $4, $5::uuid[]) id";
+await expectError("clients cannot report incidents", cA, RI, /not allowed/, [sC, null, "cargo_shortage", "Two pallets missing", "{}"]);
+await expectError("…nor drivers (they use the problem report)", driver, RI, /not allowed/, [sC, null, "cargo_shortage", "Two pallets missing", "{}"]);
+const otherDoc = (await db.query("select id from documents where shipment_id <> $1 limit 1", [sC])).rows[0]?.id;
+if (otherDoc) await expectError("evidence must belong to this shipment", doc, RI, /Evidence/, [sC, null, "seal_damaged", "Seal number differs", `{${otherDoc}}`]);
+await expectError("a container of another shipment is refused", doc, RI, /not on this shipment/, [sC, t1, "seal_damaged", "Seal number differs", "{}"]);
+const inc2 = (await expectOk("doc officer reports a shortage", doc, RI, [sC, null, "cargo_shortage", "Consignee counted 398 of 400 bags", "{}"]))?.rows[0]?.id;
+await expectRows("clients cannot read incidents", cA, "select 1 from incidents", 0);
+await expectRows("…nor drivers", driver, "select 1 from incidents", 0);
+await expectRows("operations staff read them", ops, "select 1 from incidents where shipment_id = $1", 2, [sC]);
+await expectError("incidents cannot be written directly", ops, "update incidents set status = 'resolved' where id = $1", /permission denied/, [inc2]);
+await expectOk("transport adds a comment", transport, "select add_incident_note($1, $2)", [inc2, "Driver confirms 400 loaded at Dar (fictional)"]);
+await expectError("comments are append-only", null, "update incident_notes set note = 'x'", /append-only/);
+await expectError("an incident report cannot be edited", null, "update incidents set description = 'nothing happened' where id = $1", /cannot be edited/, [inc2]);
+
+const CK = "select check_key, ok from closure_checks($1) order by check_key";
+const checks = async (uid = ops) => Object.fromEntries((await as(uid, CK, [sC])).rows.map((r) => [r.check_key, r.ok]));
+let c = await checks();
+!c.pod && !c.returned && !c.incidents && !c.finance && c.exceptions ? ok("closure checklist: POD, returns, incidents and finance missing") : bad("checks", JSON.stringify(c));
+await expectRows("clients get no checklist", cA, CK, 0, [sC]);
+const CL = "select close_shipment($1, $2)";
+await expectError("doc officer cannot close", doc, CL, /Only an operations manager/, [sC, null]);
+await expectError("closing is blocked and says why (AC-15)", ops, CL, /Cannot close yet:.*Invoices paid.*No open incidents.*Proof of delivery.*Every empty container returned/, [sC, null]);
+
+await quiet(doc, "pod_received", ago(40), { containers: [k1, k2] });
+await quiet(transport, "empty_returned", ago(30), { containers: [k1, k2], location: "Kigali ICD empty depot" });
+(await st()).overall_status === "operationally_complete" && (await st()).return_status === "returned" ? ok("both returned → operationally complete, return status returned") : bad("returned", JSON.stringify(await st()));
+await expectError("only managers resolve incidents (review)", doc, "select resolve_incident($1, $2)", /Only an operations manager/, [inc2, "Count corrected"]);
+await expectError("the outcome must be written", ops, "select resolve_incident($1, $2)", /outcome/, [inc2, "ok"]);
+for (const id of [autoInc, inc2]) await expectOk("ops manager resolves the incident", ops, "select resolve_incident($1, $2)", [id, "Reviewed with the client; no claim (fictional)"]);
+await expectError("a resolved incident cannot change", null, "update incidents set resolution = 'changed' where id = $1", /cannot change/, [inc2]);
+c = await checks();
+c.pod && c.returned && c.incidents && !c.finance ? ok("only finance is still open") : bad("checks 2", JSON.stringify(c));
+
+const CA = "select approve_closure_credit($1, $2) id";
+await expectError("ops manager cannot approve credit", ops, CA, /Only finance or an admin/, [sC, "Client on 60-day terms"]);
+await expectError("the reason is required", finance, CA, /reason/, [sC, "ok"]);
+await expectOk("finance approves credit with the terms", finance, CA, [sC, "Client on agreed 60-day credit terms (fictional)"]);
+(await st()).finance_status === "credit_approved" ? ok("finance status → credit approved") : bad("credit", (await st()).finance_status);
+await expectError("credit approvals are append-only", null, "delete from closure_credit_approvals where shipment_id = $1", /append-only/, [sC]);
+const ci = (await expectOk("an invoice issued later", finance, SD, [null, sC, "USD", lines(["Clearing (fictional)", "1", "500.00", "0"]), null, null]))?.rows[0]?.id;
+await expectOk("…issued", finance, IS, [ci, null, null]);
+(await st()).finance_status === "credit_approved" ? ok("…an unpaid invoice under an approval stays credit approved") : bad("credit+invoice", (await st()).finance_status);
+
+await expectOk("ops manager closes the shipment", ops, CL, [sC, "All done; thank you (fictional)"]);
+let S = await st();
+S.overall_status === "closed" && S.closed_at && S.closed_by === ops ? ok("closed: who and when recorded") : bad("closed", JSON.stringify(S));
+await expectRows("closure logged with the checks", null, "select 1 from shipment_closure_log where shipment_id = $1 and action = 'closed' and jsonb_array_length(checks) = 5", 1, [sC]);
+const cn = (await db.query("select recipient_id, payload from notifications where template_key = 'shipment.closed' and shipment_id = $1", [sC])).rows;
+cn.length >= 1 && cn.every((n) => n.payload.booking_contact?.includes("fictional") && n.payload.containers === 2) && cn.some((n) => n.recipient_id === cA)
+  ? ok("client notified: shipment closed with summary and booking contact") : bad("closed note", JSON.stringify(cn));
+await expectError("closing twice is refused", ops, CL, /already closed/, [sC, null]);
+await msErr("no milestones on a closed shipment", ops, sC, "update", ago(1), { note: "x" }, /closed/);
+await expectError("no incidents on a closed shipment", doc, RI, /closed/, [sC, null, "other", "Late complaint from consignee", "{}"]);
+await expectError("no new return terms on a closed shipment", ops, RT, /closed|returned/, [`{${k1}}`, nextWeek, null, null]);
+
+const RO = "select reopen_shipment($1, $2)";
+await expectError("doc officer cannot reopen", doc, RO, /Only an operations manager/, [sC, "Client claim"]);
+await expectError("reopening needs a reason", ops, RO, /reason/, [sC, ""]);
+await expectOk("ops manager reopens with a reason", ops, RO, [sC, "Client raised a late damage claim (fictional)"]);
+S = await st();
+S.overall_status === "operationally_complete" && !S.closed_at && !S.closed_by ? ok("reopened: status recomputed from the containers") : bad("reopen", JSON.stringify(S));
+await expectRows("reopen logged with the reason (audit)", null, "select 1 from shipment_closure_log where shipment_id = $1 and action = 'reopened' and note like 'Client raised%' and actor_id = $2", 1, [sC, ops]);
+await expectOk("…and closed again", admin, CL, [sC, null]);
+await expectRows("the closure log keeps every step", null, "select 1 from shipment_closure_log where shipment_id = $1", 3, [sC]);
+await expectError("the closure log is append-only", null, "delete from shipment_closure_log where shipment_id = $1", /append-only/, [sC]);
+await expectRows("clients cannot read the closure log", cA, "select 1 from shipment_closure_log", 0);
+await expectRows("…nor credit approvals", cA, "select 1 from closure_credit_approvals", 0);
+await expectRows("client still sees its closed shipment and return details", cA,
+  "select 1 from containers where shipment_id = $1 and return_depot = 'Kigali ICD empty depot'", 2, [sC]);
 }
 
 }

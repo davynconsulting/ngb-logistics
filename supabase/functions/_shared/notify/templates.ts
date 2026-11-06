@@ -46,6 +46,11 @@ export const DOC_LABELS: Record<string, string> = {
   other: "Other",
 };
 
+const INCIDENT_LABELS: Record<string, string> = {
+  seal_damaged: "Seal damaged", cargo_damage: "Cargo damage", cargo_shortage: "Cargo shortage",
+  container_damage: "Container damage", delivery_discrepancy: "Delivery discrepancy", other: "Incident",
+};
+
 const SEVERITY: Record<string, string> = { low: "Low", medium: "Medium", high: "High", critical: "Critical" };
 
 /** Milestones after which the ETA is worth repeating to the client. */
@@ -199,6 +204,21 @@ export function renderNotification(n: NotificationInput): RenderedNotification {
       || (overdue ? "An invoice is past its due date." : "A client disputed an invoice.");
     url = adminInvoiceUrl(p.invoice_id);
     tag = `finance-${inv}`;
+  } else if (key === "shipment.closed") {
+    const n = typeof p.containers === "number" ? p.containers : null;
+    const delivered = when(p.delivered_at);
+    title = ref ? `${ref}: shipment closed` : "Shipment closed";
+    body = `All done${delivered ? `: delivered ${delivered}` : ""}${n ? `, ${n} container${n === 1 ? "" : "s"} returned` : ""}. Thank you for shipping with NGB LOGISTICS.`
+      + (str(p.booking_contact) ? ` Next booking: ${clip(str(p.booking_contact)!, 120)}` : "");
+    url = portalUrl(ref);
+    tag = `shipment-${shipmentId ?? ref ?? "x"}`;
+  } else if (key === "staff.incident_reported") {
+    const kind = INCIDENT_LABELS[String(p.incident_type)] ?? "Incident";
+    title = ref ? `${ref}: ${kind.toLowerCase()}` : kind;
+    const what = clip(str(p.description) ?? "An incident was reported", 300).replace(/[.!?…]?$/, (m) => m || ".");
+    body = `${str(p.container) ? `${str(p.container)}: ` : ""}${what} Review it before the shipment can close.`;
+    url = adminUrl(shipmentId);
+    tag = `incident-${shipmentId ?? "x"}`;
   } else if (key === "shipment.alert") {
     title = ref ? `${ref}: update` : "Shipment update";
     body = clip(str(p.message) ?? "There is an update on your shipment.", 500);

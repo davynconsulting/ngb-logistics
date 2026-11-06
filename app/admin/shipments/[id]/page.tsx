@@ -38,6 +38,9 @@ import { Badge } from "@/components/ui/badge";
 import { listShipmentInvoices } from "@/lib/dal/finance";
 import { canReadFinance, canWriteFinance } from "@/lib/domain/finance";
 import { ShipmentFinance } from "@/components/finance/shipment-finance";
+import { getClosureData } from "@/lib/dal/closure";
+import { canSeeClosure } from "@/lib/domain/closure";
+import { ClosurePanel, IncidentsPanel, ReturnPanel } from "@/components/closure/closure-panels";
 
 export const metadata: Metadata = { title: "Shipment" };
 
@@ -68,13 +71,15 @@ async function ShipmentDetail({ params, searchParams }: PageProps<"/admin/shipme
   const canTransport = canAssignTransport(user.role);
   const canExceptions = canManageExceptions(user.role);
   const financeReader = canReadFinance(user.role);
-  const [s, milestones, etaHistory, transport, exceptions, routes, drivers, staff, invoices] = await Promise.all([
+  const closureView = canSeeClosure(user.role);
+  const [s, milestones, etaHistory, transport, exceptions, routes, drivers, staff, invoices, closure] = await Promise.all([
     getShipment(id), getMilestones(id), getEtaHistory(id), getTransport(id),
     user.role === "driver" ? Promise.resolve([]) : getShipmentExceptions(id),
     canTransport ? listRoutes() : Promise.resolve([]),
     canTransport ? listDrivers() : Promise.resolve([]),
     canExceptions ? listActiveStaff() : Promise.resolve([]),
     financeReader ? listShipmentInvoices(id) : Promise.resolve([]),
+    closureView ? getClosureData(id) : Promise.resolve(null),
   ]);
   if (!s) notFound(); // also when RLS hides it (e.g. not assigned to this agent)
   const tz = s.client?.timezone ?? "Africa/Kigali";
@@ -196,6 +201,17 @@ async function ShipmentDetail({ params, searchParams }: PageProps<"/admin/shipme
         {user.role !== "driver" && (
           <ExceptionPanel shipmentId={s.id} exceptions={exceptions} containers={containers} staff={staffOptions}
             user={user} timeZone={tz} milestoneLabel={milestoneLabel} canManage={canExceptions} />
+        )}
+
+        {s.containers.some((c) => ["delivered", "container_returned"].includes(c.operational_status) || c.return_deadline) && (
+          <ReturnPanel s={s} role={user.role} timeZone={tz} />
+        )}
+        {closure && (
+          <IncidentsPanel shipmentId={s.id} closed={s.overall_status === "closed"} data={closure} role={user.role} timeZone={tz}
+            containers={containers} evidence={evidence} />
+        )}
+        {closure && ["delivered", "container_returned", "operationally_complete", "closed"].some((x) => s.overall_status === x || s.containers.some((c) => c.operational_status === x)) && (
+          <ClosurePanel s={s} data={closure} role={user.role} timeZone={tz} />
         )}
 
         {financeReader && (

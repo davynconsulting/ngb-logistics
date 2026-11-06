@@ -90,6 +90,12 @@ async function Shipment({ params }: Pick<PageProps<"/portal/shipments/[reference
                   Delivery: {DELIVERY_STATUS_LABELS[c.delivery_status]}{c.delivery_at && ` (${formatDate(c.delivery_at, tz)})`}
                   {" · "}Empty return: {RETURN_STATUS_LABELS[c.return_status]}{c.empty_return_at && ` (${formatDate(c.empty_return_at, tz)})`}
                 </p>
+                {c.return_status !== "returned" && (c.return_deadline || c.return_depot) && (
+                  <p className={`text-xs ${c.return_status === "return_overdue" ? "font-medium text-destructive" : ""}`}>
+                    Return the empty container{c.return_depot && ` to ${c.return_depot}`}{c.return_deadline && ` by ${formatDateTime(c.return_deadline, tz)}`}
+                    {c.return_charges_note && <span className="block break-words text-muted-foreground">Charges: {c.return_charges_note}</span>}
+                  </p>
+                )}
               </li>
             ))}
           </ul>
