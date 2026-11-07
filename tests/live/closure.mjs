@@ -78,9 +78,12 @@ check("damage recorded and a container-damage incident opened", r.value?.ok && (
 const staffN = (await svc.from("notifications").select("id").eq("template_key", "staff.incident_reported").eq("shipment_id", shipId)).data ?? [];
 check("ops are alerted about the incident", staffN.length > 0);
 r = await formAction(finance, "reportIncident", [shipId, undefined], { type: "cargo_shortage", description: "Two cartons missing (TEST)" }, PAGE);
-check("finance cannot report incidents", (await incs()).length === 1, err(r));
+// finance is turned away by requireStaff before the database (a redirect, not a message)
+check("finance cannot report incidents", (await incs()).length === 1 && (!!r.redirect || /not allowed/.test(r.value?.error ?? "")), r.redirect ?? err(r));
 r = await formAction(doc, "reportIncident", [shipId, undefined], { type: "cargo_shortage", container_id: c1, description: "Two cartons short against the packing list (TEST)" }, PAGE);
 check("doc officer reports a cargo shortage", r.value?.ok && (await incs()).length === 2, err(r));
+r = await formAction(doc, "reportIncident", [shipId, undefined], { type: "delivery_discrepancy", container_id: "", description: "Delivery note signed by the wrong consignee (TEST)" }, PAGE);
+check("doc officer reports a shipment-level incident (no container)", r.value?.ok && (await incs()).length === 3 && (await incs())[2].container_id === null, err(r));
 check("client cannot read incidents", ((await aline.api.from("incidents").select("id")).data ?? []).length === 0);
 const [, inc2] = await incs();
 r = await formAction(doc, "addIncidentNote", [inc2.id, undefined], { note: "Client confirmed the count by phone (TEST)" }, PAGE);
@@ -100,7 +103,7 @@ await ms(transport, "empty_returned", { p_container_ids: [c1, c2], p_location: "
 for (const i of await incs()) {
   r = await formAction(ops, "resolveIncident", [i.id, undefined], { resolution: "Reviewed with the client and the transporter (TEST)" }, PAGE);
 }
-check("ops manager resolves both incidents", (await incs()).every((i) => i.status === "resolved"), err(r));
+check("ops manager resolves every incident", (await incs()).every((i) => i.status === "resolved"), err(r));
 c = await checks();
 check("only finance is still open", c.pod && c.returned && c.incidents && !c.finance, JSON.stringify(c));
 r = await formAction(ops, "approveCredit", [shipId, undefined], { reason: "Invoice to follow (TEST)" }, PAGE);
@@ -117,7 +120,7 @@ check("ops manager closes the shipment (AC-15)", r.value?.ok && s.overall_status
 const closedN = (await svc.from("notifications").select("id, payload").eq("template_key", "shipment.closed").eq("shipment_id", shipId)).data ?? [];
 check("client is told the shipment is closed", closedN.length > 0 && closedN[0].payload?.containers === 2, JSON.stringify(closedN[0]?.payload));
 r = await formAction(doc, "reportIncident", [shipId, undefined], { type: "other", description: "Late remark after closing (TEST)" }, PAGE);
-check("no new incidents on a closed shipment", (await incs()).length === 2, err(r));
+check("no new incidents on a closed shipment", (await incs()).length === 3 && /closed/.test(r.value?.error ?? ""), err(r));
 
 // ---- reopen ----
 r = await formAction(ops, "reopenShipment", [shipId, undefined], { reason: "" }, PAGE);

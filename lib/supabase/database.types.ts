@@ -2691,6 +2691,20 @@ export type Database = {
         Args: { p_reason: string; p_shipment_id: string }
         Returns: undefined
       }
+      report_delivery_performance: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          avg_late_hours: number
+          client_id: string
+          client_name: string
+          delivered: number
+          late: number
+          on_time: number
+          return_overdue_now: number
+          returned: number
+          returned_on_time: number
+        }[]
+      }
       report_incident: {
         Args: {
           p_container_id: string
@@ -2700,6 +2714,50 @@ export type Database = {
           p_type: Database["public"]["Enums"]["incident_type"]
         }
         Returns: string
+      }
+      report_overdue_invoices: {
+        Args: never
+        Returns: {
+          client_id: string
+          client_name: string
+          currency: string
+          days_1_30: number
+          days_31_60: number
+          days_61_90: number
+          days_over_90: number
+          disputed: number
+          invoices: number
+          oldest_due_date: string
+          total_overdue: number
+        }[]
+      }
+      report_port_dwell: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          avg_hours: number
+          containers: number
+          estimate_hours: number
+          max_hours: number
+          median_hours: number
+          p90_hours: number
+          port_code: string
+          port_name: string
+          within_estimate: number
+        }[]
+      }
+      report_transit: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          avg_hours: number
+          containers: number
+          estimate_hours: number
+          max_hours: number
+          median_hours: number
+          p90_hours: number
+          route_code: string
+          route_name: string
+          within_estimate: number
+        }[]
       }
       resolve_exception: {
         Args: { p_exception_id: string; p_resolution: string }

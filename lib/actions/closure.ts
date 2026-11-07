@@ -66,7 +66,8 @@ export async function reportIncident(shipmentId: string, _prev: ClosureState, fd
   const v = parsed.data;
   const supabase = await createClient();
   const { error } = await supabase.rpc("report_incident", {
-    p_shipment_id: shipmentId, p_container_id: v.containerId as string, p_type: v.type, p_description: v.description, p_evidence: v.evidence,
+    p_shipment_id: shipmentId, // null (not undefined): an omitted argument makes PostgREST miss the function
+    p_container_id: (v.containerId ?? null) as string, p_type: v.type, p_description: v.description, p_evidence: v.evidence,
   });
   if (error) return { error: dbError(error, "The incident could not be saved. Please try again.") };
   refresh();

@@ -8,6 +8,7 @@ const ITEMS: (NavItem & { roles?: AppRole[] })[] = [
   { href: "/admin/exceptions", label: "Exceptions", roles: ["admin", "ops_manager", "doc_officer", "clearing_agent", "transport_coord", "finance"] },
   { href: "/admin/clients", label: "Clients", roles: ["admin", "ops_manager", "doc_officer", "finance"] },
   { href: "/admin/finance", label: "Finance", roles: ["admin", "ops_manager", "finance"] },
+  { href: "/admin/reports", label: "Reports", roles: ["admin", "ops_manager", "finance"] },
   { href: "/admin/users", label: "Users", roles: ["admin", "ops_manager"] },
   { href: "/admin/notifications", label: "Notifications", roles: ["admin", "ops_manager"] },
 ];

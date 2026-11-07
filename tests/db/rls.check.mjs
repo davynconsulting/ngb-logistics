@@ -1327,6 +1327,38 @@ await expectRows("clients cannot read the closure log", cA, "select 1 from shipm
 await expectRows("…nor credit approvals", cA, "select 1 from closure_credit_approvals", 0);
 await expectRows("client still sees its closed shipment and return details", cA,
   "select 1 from containers where shipment_id = $1 and return_depot = 'Kigali ICD empty depot'", 2, [sC]);
+
+// ---- 0025 reports (uses the closure fixture: discharge −180 h, gate-out −130 h, delivered −50 h, returned −30 h) ----
+console.log("\n0025 reports:");
+const win = (h) => [new Date(Date.now() - (h + 0.5) * 3600e3).toISOString(), new Date(Date.now() - (h - 0.5) * 3600e3).toISOString()];
+const yearAgo = [new Date(Date.now() - 400 * 864e5).toISOString(), new Date().toISOString()];
+for (const [fn, who] of [["report_port_dwell", cA], ["report_transit", doc], ["report_delivery_performance", finance]])
+  await expectError(`${fn}: refused to ${who === cA ? "clients" : who === doc ? "the doc officer" : "finance"}`, who, `select * from ${fn}($1, $2)`, /not allowed/, win(130));
+await expectError("a period over a year is refused", ops, "select * from report_transit($1, $2)", /up to one year/, yearAgo);
+await expectError("an inverted period is refused", ops, "select * from report_transit($1, $2)", /up to one year/, win(130).reverse());
+const dw = (await as(ops, "select * from report_port_dwell($1, $2)", win(130))).rows;
+dw.length === 1 && dw[0].containers === 2 && Number(dw[0].avg_hours) === 50 && dw[0].estimate_hours === 120 && dw[0].within_estimate === 2
+  ? ok("dwell: discharge → gate-out per port, against port processing + dispatch (96 + 24 h)") : bad("dwell", JSON.stringify(dw));
+const tr = (await as(admin, "select * from report_transit($1, $2)", win(50))).rows;
+tr.length === 1 && tr[0].containers === 2 && Number(tr[0].median_hours) === 80 && tr[0].estimate_hours === 72 && tr[0].within_estimate === 0
+  ? ok("transit: gate-out → delivery, 80 h against the 72 h default (no route) → not within") : bad("transit", JSON.stringify(tr));
+const eta0 = (await db.query("select current_eta from shipments where id = $1", [sC])).rows[0].current_eta;
+const dp = (await as(ops, "select * from report_delivery_performance($1, $2)", win(50))).rows;
+const mine = dp.find((r) => r.client_id === A);
+mine && mine.delivered === 2 && mine.on_time + mine.late === 2 && (eta0 !== null || (mine.late === 2 && Number(mine.avg_late_hours) === 8))
+  ? ok("delivery performance: late against the ETA at dispatch (+6 h tolerance)") : bad("delivery", JSON.stringify({ dp, eta0 }));
+const rp = (await as(ops, "select * from report_delivery_performance($1, $2)", win(30))).rows.find((r) => r.client_id === A);
+rp && rp.returned === 2 && rp.returned_on_time === 2 ? ok("…empty returns by the deadline counted") : bad("returns", JSON.stringify(rp));
+await expectError("overdue invoices: refused to the doc officer", doc, "select * from report_overdue_invoices()", /not allowed/);
+await expectError("…and to clients", cA, "select * from report_overdue_invoices()", /not allowed/);
+const od = (await as(finance, "select * from report_overdue_invoices()")).rows;
+const sumOk = od.every((r) => Number(r.total_overdue).toFixed(2) === (Number(r.days_1_30) + Number(r.days_31_60) + Number(r.days_61_90) + Number(r.days_over_90)).toFixed(2));
+const direct = (await db.query(`select count(*)::int n from invoices i join organizations o on o.id = i.client_id
+  where i.status in ('issued','partially_paid','overdue','disputed') and i.balance_due > 0
+    and i.due_date < (now() at time zone coalesce(o.timezone, 'Africa/Kigali'))::date`)).rows[0].n;
+od.length > 0 && sumOk && od.reduce((t, r) => t + r.invoices, 0) === direct
+  ? ok(`overdue invoices: ageing buckets add up; ${direct} past-due invoice(s), none missing`) : bad("overdue", JSON.stringify({ od, direct }));
+(await as(ops, "select * from report_overdue_invoices()")).rows.length === od.length ? ok("…operations managers read it too (finance reader)") : bad("ops overdue", "");
 }
 
 }
