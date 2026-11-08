@@ -4,8 +4,10 @@
  * run. 'strict-dynamic' lets those scripts load the app's chunks; nothing else may run, inline or not.
  *
  * - connect-src: the app itself and Supabase (the upload form sends files straight to Storage).
- * - style-src-attr 'unsafe-inline': server-rendered style="" attributes (UI components). Nonces
- *   cannot cover attributes; styles cannot run code.
+ * - style-src 'unsafe-inline': UI libraries (theme switcher, toasts) inject <style> elements from
+ *   JavaScript without a nonce (found by tests/e2e/csp.spec.ts in a real browser). Styles cannot
+ *   run code, and CSS cannot leak data out: images, fonts and connections are limited to the app
+ *   and Supabase. No nonce here on purpose: browsers ignore 'unsafe-inline' when a nonce is listed.
  * - No 'unsafe-eval' in production. Development needs it (React error overlays).
  */
 export function createNonce(): string {
@@ -21,8 +23,7 @@ export function buildCsp(nonce: string, opts: { supabaseUrl: string; dev?: boole
   const directives: [string, ...string[]][] = [
     ["default-src", "'self'"],
     ["script-src", "'self'", `'nonce-${nonce}'`, "'strict-dynamic'", ...(opts.dev ? ["'unsafe-eval'"] : [])],
-    ["style-src", "'self'", ...(opts.dev ? ["'unsafe-inline'"] : [`'nonce-${nonce}'`])],
-    ["style-src-attr", "'unsafe-inline'"],
+    ["style-src", "'self'", "'unsafe-inline'"],
     ["img-src", "'self'", "blob:", "data:"],
     ["font-src", "'self'"],
     ["connect-src", "'self'", supabase],

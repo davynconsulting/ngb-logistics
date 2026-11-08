@@ -15,7 +15,10 @@ describe("content security policy", () => {
     expect(directive(csp, "script-src")).toBe("script-src 'self' 'nonce-N0nce' 'strict-dynamic'");
     expect(csp).not.toContain("unsafe-eval");
     expect(directive(csp, "script-src")).not.toContain("unsafe-inline");
-    expect(directive(csp, "style-src")).toBe("style-src 'self' 'nonce-N0nce'");
+    // inline styles allowed (libraries inject <style>); no nonce, or browsers would ignore 'unsafe-inline'
+    expect(directive(csp, "style-src")).toBe("style-src 'self' 'unsafe-inline'");
+    expect(directive(csp, "img-src")).toBe("img-src 'self' blob: data:");
+    expect(directive(csp, "font-src")).toBe("font-src 'self'");
     expect(csp).toContain("upgrade-insecure-requests");
   });
   it("locks down framing, plugins, base and form targets", () => {
@@ -26,10 +29,9 @@ describe("content security policy", () => {
   it("connects only to itself and the Supabase origin (no path, no wildcard)", () => {
     expect(directive(buildCsp("x", { supabaseUrl: SUPA + "/rest/v1/" }), "connect-src")).toBe(`connect-src 'self' ${SUPA}`);
   });
-  it("development adds eval and inline styles for the dev overlay only", () => {
+  it("development adds eval for the dev overlay only", () => {
     const csp = buildCsp("x", { supabaseUrl: SUPA, dev: true });
     expect(directive(csp, "script-src")).toContain("'unsafe-eval'");
-    expect(directive(csp, "style-src")).toBe("style-src 'self' 'unsafe-inline'");
     expect(csp).not.toContain("upgrade-insecure-requests");
   });
 });
