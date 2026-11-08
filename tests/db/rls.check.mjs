@@ -1363,6 +1363,24 @@ od.length > 0 && sumOk && od.reduce((t, r) => t + r.invoices, 0) === direct
 
 }
 
+
+// ---- 0026 security pass ----
+console.log("\n0026 security pass:");
+{
+  const ids = async (uid, sql, params) => (await as(uid, sql, params)).rows.map((r) => r.id);
+  const orgsOf = (uid) => ids(uid, "select id from organizations");
+  const ag = await orgsOf(agent);
+  ag.includes(A) && ag.includes(ngb) && !ag.includes(B) ? ok("clearing agent sees NGB and the clients of its assigned shipments only") : bad("agent orgs", JSON.stringify(ag));
+  (await orgsOf(doc)).includes(B) ? ok("other office roles still see every client") : bad("doc orgs", "");
+  const ap = await ids(agent, "select id from profiles");
+  ap.includes(cA) && !ap.includes(cB) && ap.includes(doc) && ap.includes(agent) ? ok("clearing agent sees NGB staff and its clients' users, not other clients' users") : bad("agent profiles", JSON.stringify(ap.length));
+  await expectRows("…nor another client's users by id", agent, "select 1 from profiles where id = $1", 0, [cB]);
+  await expectRows("clients still see only their own organization", cA, "select 1 from organizations", 1);
+  await expectRows("…and their own colleagues", cA, "select 1 from profiles where organization_id <> $1", 0, [A]);
+  await expectError("return terms cannot be set by a direct container insert", ops,
+    "insert into containers (shipment_id, container_number, return_deadline) values ($1, 'MSKU9999997', now())", /permission denied/, [sA.id]);
+}
+
 console.log("\nSecurity invariants (all migrations):");
 const none = async (name, sql) => {
   const rows = (await db.query(sql)).rows;
@@ -1398,6 +1416,39 @@ await none("sender-only functions are not callable by signed-in users",
   `select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname in ('claim_notification_deliveries', 'complete_notification_delivery')
       and has_function_privilege('authenticated', p.oid, 'execute')`);
+// Direct writes signed-in users may make (anything else goes through checked database functions).
+// A new grant fails here until it is reviewed and added on purpose.
+const WRITE_GRANTS = "push_subscriptions:DELETE shipment_assignments:DELETE";
+const grants = (await db.query(`select table_name || ':' || string_agg(privilege_type, ',' order by privilege_type) g
+    from information_schema.role_table_grants
+   where grantee = 'authenticated' and table_schema = 'public' and privilege_type in ('INSERT', 'UPDATE', 'DELETE')
+   group by table_name order by table_name`)).rows.map((r) => r.g).join(" ");
+grants === WRITE_GRANTS ? ok("signed-in users can write directly only to the reviewed tables") : bad("write grants changed", grants);
+const colGrants = (await db.query(`select table_name || '.' || column_name || ':' || privilege_type g
+    from information_schema.column_privileges
+   where grantee = 'authenticated' and table_schema = 'public' and privilege_type in ('INSERT', 'UPDATE')
+     and (table_name, privilege_type) not in (select table_name, privilege_type from information_schema.role_table_grants
+                                               where grantee = 'authenticated' and table_schema = 'public')
+   order by 1`)).rows.map((r) => r.g);
+const COLUMN_GRANTS = [
+  "app_settings.updated_at:UPDATE app_settings.updated_by:UPDATE app_settings.value:UPDATE",
+  "containers.container_number:INSERT containers.container_number:UPDATE containers.location_kind:INSERT containers.location_kind:UPDATE containers.location_name:INSERT containers.location_name:UPDATE containers.seal_number:INSERT containers.seal_number:UPDATE containers.shipment_id:INSERT containers.size_type:INSERT containers.size_type:UPDATE",
+  "document_requirements.client_note:INSERT document_requirements.client_note:UPDATE document_requirements.document_type:INSERT document_requirements.due_date:INSERT document_requirements.due_date:UPDATE document_requirements.is_required:INSERT document_requirements.is_required:UPDATE document_requirements.shipment_id:INSERT document_requirements.status:INSERT document_requirements.status:UPDATE",
+  "documents.client_visible:INSERT documents.client_visible:UPDATE documents.container_id:INSERT documents.document_type:INSERT documents.file_name:INSERT documents.id:INSERT documents.mime_type:INSERT documents.replaces_document_id:INSERT documents.shipment_id:INSERT documents.size_bytes:INSERT documents.storage_path:INSERT documents.version:INSERT",
+  "driver_contacts.driver_name:UPDATE driver_contacts.driver_phone:UPDATE driver_contacts.share_with_client:UPDATE",
+  "notification_preferences.consent_at:UPDATE notification_preferences.consent_source:UPDATE notification_preferences.locale:UPDATE notification_preferences.push_enabled:UPDATE notification_preferences.whatsapp_opt_in:UPDATE notification_preferences.whatsapp_phone:UPDATE",
+  "notifications.read_at:UPDATE",
+  "organizations.account_manager_id:INSERT organizations.account_manager_id:UPDATE organizations.billing_address:INSERT organizations.billing_address:UPDATE organizations.billing_terms_days:INSERT organizations.billing_terms_days:UPDATE organizations.client_code:INSERT organizations.credit_currency:INSERT organizations.credit_currency:UPDATE organizations.credit_limit:INSERT organizations.credit_limit:UPDATE organizations.email:INSERT organizations.email:UPDATE organizations.is_active:UPDATE organizations.legal_name:INSERT organizations.legal_name:UPDATE organizations.payment_reminders:INSERT organizations.payment_reminders:UPDATE organizations.phone_e164:INSERT organizations.phone_e164:UPDATE organizations.preferred_language:INSERT organizations.preferred_language:UPDATE organizations.primary_contact_name:INSERT organizations.primary_contact_name:UPDATE organizations.show_driver_contact:INSERT organizations.show_driver_contact:UPDATE organizations.tax_id:INSERT organizations.tax_id:UPDATE organizations.timezone:INSERT organizations.timezone:UPDATE",
+  "ports.code:INSERT ports.country:INSERT ports.country:UPDATE ports.is_active:INSERT ports.is_active:UPDATE ports.name:INSERT ports.name:UPDATE",
+  "profiles.full_name:UPDATE profiles.phone_e164:UPDATE",
+  "push_subscriptions.auth:INSERT push_subscriptions.endpoint:INSERT push_subscriptions.p256dh:INSERT push_subscriptions.user_agent:INSERT",
+  "routes.border_crossing:INSERT routes.border_crossing:UPDATE routes.checkpoint_alert_hours:INSERT routes.checkpoint_alert_hours:UPDATE routes.code:INSERT routes.destination_city:INSERT routes.destination_country:INSERT routes.is_active:INSERT routes.is_active:UPDATE routes.name:INSERT routes.name:UPDATE routes.origin_port_id:INSERT routes.transit_estimate_hours:INSERT routes.transit_estimate_hours:UPDATE",
+  "shipment_assignments.shipment_id:INSERT shipment_assignments.user_id:INSERT",
+  "shipments.assigned_ops_user_id:INSERT shipments.assigned_ops_user_id:UPDATE shipments.bl_number:INSERT shipments.bl_number:UPDATE shipments.booking_reference:INSERT shipments.booking_reference:UPDATE shipments.cargo_description:INSERT shipments.cargo_description:UPDATE shipments.client_id:INSERT shipments.delivery_address:INSERT shipments.delivery_address:UPDATE shipments.destination_city:INSERT shipments.destination_city:UPDATE shipments.destination_country:INSERT shipments.destination_country:UPDATE shipments.gross_weight_kg:INSERT shipments.gross_weight_kg:UPDATE shipments.origin_port_id:INSERT shipments.origin_port_id:UPDATE shipments.origin_terminal:INSERT shipments.origin_terminal:UPDATE shipments.package_count:INSERT shipments.package_count:UPDATE shipments.planned_vessel_arrival:INSERT shipments.planned_vessel_arrival:UPDATE shipments.shipping_line:INSERT shipments.shipping_line:UPDATE shipments.vessel_name:INSERT shipments.vessel_name:UPDATE shipments.voyage_number:INSERT shipments.voyage_number:UPDATE",
+  "sla_rules.description:INSERT sla_rules.description:UPDATE sla_rules.escalate_after_hours:INSERT sla_rules.escalate_after_hours:UPDATE sla_rules.is_active:INSERT sla_rules.is_active:UPDATE sla_rules.port_id:INSERT sla_rules.route_id:INSERT sla_rules.severity:INSERT sla_rules.severity:UPDATE sla_rules.stage:INSERT sla_rules.threshold_hours:INSERT sla_rules.threshold_hours:UPDATE",
+  "transport_assignments.border_crossing:UPDATE transport_assignments.planned_loading_at:UPDATE transport_assignments.trailer_registration:UPDATE transport_assignments.transit_document_refs:UPDATE",
+].join(" ");
+colGrants.join(" ") === COLUMN_GRANTS ? ok(`column-level write grants match the reviewed list (${colGrants.length})`) : bad("column write grants changed", colGrants.join(" "));
 await none("append-only tables cannot be updated or deleted by signed-in users",
   `select table_name, privilege_type from information_schema.role_table_grants
     where grantee = 'authenticated' and table_schema = 'public' and privilege_type in ('UPDATE', 'DELETE')
