@@ -55,7 +55,7 @@ jobs:
     # Secrets are not available to pull requests from forks
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
     steps:
@@ -70,6 +70,16 @@ jobs:
       - run: npm run build
       - name: Run Playwright (starts the production server itself)
         run: npm run test:e2e
+      - name: Lighthouse (mobile; accessibility and best practices enforced)
+        if: success() || failure()
+        run: npm run test:lighthouse
+      - name: Upload Lighthouse reports
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-report
+          path: lighthouse-report/
+          retention-days: 14
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v4
