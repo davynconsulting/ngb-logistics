@@ -39,9 +39,10 @@ Don't generate the whole app in one go. **Don't make destructive database change
 ## Project facts and gotchas
 - **Supabase:** there is no local Docker. A hosted **dev** project, `ngb-logistics-dev` (ref `idyydcuihxkyitylkugo`), is the only database. Its credentials are in `.env.local` (gitignored). Never print or echo the secret values. Never run `supabase db reset` against it without explicit approval.
 - **Next 16:** the request interceptor is `proxy.ts` (middleware is deprecated). Read `node_modules/next/dist/docs/` before using unfamiliar APIs.
-- **Cache Components is on:** reading `cookies()` (the session) must happen inside `<Suspense>`. Don't read it at the top level of a layout. `lib/supabase/server.ts` calls `connection()` first, because the Supabase client reads the clock, which Next forbids during prerender.
+- **Every page renders per request (Sprint 5).** `cacheComponents` is OFF because the nonce CSP needs it: prebuilt shells can't carry a per-request nonce (measured cost ~8 ms first byte). The root layout reads the nonce with `headers()`, which makes every route dynamic. Don't turn Cache Components, partial prerendering or static pages back on without dropping the nonce CSP. The existing `<Suspense>` boundaries around session reads stay (they still stream).
+- **CSP:** `proxy.ts` sets it per request from `lib/security/csp.ts` (nonce + `'strict-dynamic'`, no eval, `connect-src` self + Supabase only). Next adds the nonce to its scripts; any new inline script must use the nonce from `headers().get("x-nonce")`. New third-party origins (fonts, analytics, WhatsApp widgets) must be added there deliberately. `tests/live/security.mjs` checks every script carries the nonce; `tests/e2e/csp.spec.ts` checks the browser reports no violations (CI).
 - **Auth:** `proxy.ts` handles routing only. Pages must call `requireClient()` / `requireStaff()` from `lib/dal/session.ts`, and RLS is the real guard. Never use `getSession()` for trust decisions; use `getClaims()`.
-- **Never put tenant data in a server-side `'use cache'` or `'use cache: remote'`**, or one client could see another's data. Use `'use cache: private'` or no caching.
+- **Never put tenant data in a server-side cache** (`'use cache'`, `unstable_cache`, fetch caching), or one client could see another's data.
 - **Tailwind** loads through `@tailwindcss/turbopack` in `next.config.ts`, not PostCSS.
 - **This Mac runs macOS 12.** Playwright's browsers (Chromium, Firefox and WebKit) don't support it, so `npm run test:e2e` can't run locally. Run e2e tests in CI (Linux) instead. Locally, check pages with `next start` + `curl`.
 - **Role-blocked and not-found pages return HTTP 200.** `redirect()` and `notFound()` run inside `<Suspense>` after streaming starts, so the status stays 200. The redirect happens in the browser, and the not-found page adds `noindex`. Tests should check the page content (no protected data, "could not be found") rather than the status code.
@@ -85,14 +86,14 @@ Don't generate the whole app in one go. **Don't make destructive database change
   - Sign-out sends the device's endpoint, so its subscription is deleted. The service worker renews rotated subscriptions via `POST /api/push/renew` (same origin only).
   - Only known push-service hosts are accepted (`isAllowedPushEndpoint`).
   - iOS needs "Add to Home Screen" (16.4+) before push works; `PushToggle` explains this.
-  - Security headers are set in `next.config.ts`. A full script CSP with nonces is planned for Sprint 5.
+  - Security headers are set in `next.config.ts`; the page CSP with nonces comes from `proxy.ts`.
 - **Client portal:** pages are `/portal` (overview), `/portal/shipments`, `/portal/shipments/[reference]`, `/portal/notifications` and `/portal/settings`. Data comes from `lib/dal/portal.ts`.
   - List columns explicitly (never `*`), because clients can read every column of their own shipment rows.
   - A reference that doesn't exist and another client's reference give the same "not found".
   - Clients upload only `CLIENT_UPLOAD_TYPES` through the same prepare/finalize actions. Their uploads are always client-visible, pending review, and notify the shipment's ops owner.
   - Inbox texts come from the shared templates (`inboxEntry`). Opening a notification marks it read.
   - WhatsApp consent is set through `saveWhatsApp`; the number must include the country code.
-  - Navigation is a bottom bar on phones (`PortalNav`). With Cache Components, `usePathname()` must stay inside `<Suspense>` and must not be used in the Suspense fallback.
+  - Navigation is a bottom bar on phones (`PortalNav`). `usePathname()` stays inside `<Suspense>` and is not used in the Suspense fallback (written for Cache Components; harmless now).
 - **ETA reason (0019):** `shipments.eta_reason` is client-readable. A revision hidden from the client sets it to "Schedule updated"; the real reason stays in `eta_revisions`.
 - **Client reads (0015):** clients can't read `milestone_events` or `transport_assignments` directly, because they carry internal reasons. Use `client_timeline()`, `client_transport()` and `client_shipment_alerts()`.
   - Driver contact is shown only if `organizations.show_driver_contact` AND `driver_contacts.share_with_client`.

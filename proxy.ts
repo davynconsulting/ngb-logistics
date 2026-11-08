@@ -2,19 +2,31 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { publicEnv } from "@/lib/env";
 import { areaOf, canUseArea, homePathFor, isAppRole } from "@/lib/auth/roles";
+import { buildCsp, createNonce } from "@/lib/security/csp";
 
 /**
  * Runs before every page request (see `config.matcher`).
  *
  * 1. Refreshes the Supabase session cookie when the access token is near expiry.
- * 2. Routes coarsely by role. Signed-out users are sent to /login, clients
+ * 2. Sets the Content-Security-Policy with a fresh nonce (lib/security/csp.ts). Next.js reads it
+ *    from the forwarded request header and adds the nonce to its own scripts.
+ * 3. Routes coarsely by role. Signed-out users are sent to /login, clients
  *    away from /admin and staff away from /portal.
  *
  * Routing only. It is NOT the security boundary: every page re-checks the
  * user through the DAL (lib/dal/session.ts) and the database enforces RLS.
  */
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  const nonce = createNonce();
+  const csp = buildCsp(nonce, { supabaseUrl: publicEnv.NEXT_PUBLIC_SUPABASE_URL, dev: process.env.NODE_ENV === "development" });
+  /** Continue to the page with the CSP (and any refreshed cookies) on the forwarded request. */
+  const forward = () => {
+    const headers = new Headers(request.headers);
+    headers.set("x-nonce", nonce);
+    headers.set("Content-Security-Policy", csp);
+    return NextResponse.next({ request: { headers } });
+  };
+  let response = forward();
 
   const supabase = createServerClient(
     publicEnv.NEXT_PUBLIC_SUPABASE_URL,
@@ -26,7 +38,7 @@ export async function proxy(request: NextRequest) {
         },
         setAll(cookiesToSet, headers) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          response = NextResponse.next({ request });
+          response = forward();
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options),
           );
@@ -52,6 +64,7 @@ export async function proxy(request: NextRequest) {
     const redirect = NextResponse.redirect(new URL(path, request.url));
     response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
     redirect.headers.set("Cache-Control", "private, no-store");
+    redirect.headers.set("Content-Security-Policy", csp);
     return redirect;
   };
 
@@ -74,6 +87,7 @@ export async function proxy(request: NextRequest) {
     return redirectTo(homePathFor(role));
   }
 
+  response.headers.set("Content-Security-Policy", csp);
   return response;
 }
 

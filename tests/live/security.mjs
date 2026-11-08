@@ -218,4 +218,26 @@ if (kNote) {
 }
 check("guessing tests had another client's data to aim at", !!(kShip && aInv && aRcpt && kDoc && kNote), JSON.stringify({ ship: !!kShip, inv: !!aInv, rcpt: !!aRcpt, doc: !!kDoc, note: !!kNote }));
 
+// ---- E. Content-Security-Policy: a fresh nonce on every page, carried by every script we send ----
+{
+  const pages = [["/", null], ["/login", null], ["/reset-password", null], ["/no-such-page", null], ["/portal", U.client],
+    ["/portal/invoices", U.client], ["/admin", U.ops_manager], ["/admin/shipments", U.ops_manager], ["/admin/finance", U.finance], ["/driver", U.driver]];
+  const nonces = new Set(), gaps = [];
+  let policyOk = true;
+  for (const [path, who] of pages) {
+    const r = await get(path, who);
+    const csp = r.headers.get("content-security-policy") ?? "";
+    const n = (csp.match(/'nonce-([^']+)'/) ?? [])[1];
+    nonces.add(n);
+    policyOk &&= /script-src 'self' 'nonce-[^']+' 'strict-dynamic'(;|$)/.test(csp) && !csp.includes("unsafe-eval") && csp.includes("object-src 'none'")
+      && csp.includes("frame-ancestors 'none'") && /connect-src 'self' https:\/\/[a-z0-9]+\.supabase\.co(;|$)/.test(csp);
+    const exec = [...(await r.text()).matchAll(/<script\b([^>]*)>/g)].map((m) => m[1]).filter((a) => !/type="application\/(ld\+)?json"/.test(a));
+    const miss = exec.filter((a) => !n || !a.includes(`nonce="${n}"`)).length;
+    if (miss) gaps.push(`${path} (${miss} of ${exec.length})`);
+  }
+  check("CSP on every page: nonce + strict-dynamic, no eval, no plugins, no framing, connects only to itself and Supabase", policyOk);
+  check(`every executable script on ${pages.length} pages carries that request's nonce`, gaps.length === 0, gaps.join(", "));
+  check("a different nonce on every request", nonces.size === pages.length && !nonces.has(undefined));
+}
+
 finish();

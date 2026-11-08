@@ -116,6 +116,11 @@ r = await formAction(transport, "closeShipment", [shipId, undefined], { note: ""
 check("transport coordinator cannot close", !(await st()).closed_at, err(r));
 r = await formAction(ops, "closeShipment", [shipId, undefined], { note: "All complete (TEST)" }, PAGE);
 let s = await st();
+if (!r.value?.ok) {   // show the database's own error (the action shows users a generic message)
+  const d = await ops.api.rpc("close_shipment", { p_shipment_id: shipId, p_note: "All complete (TEST)" });
+  console.log("  close_shipment direct:", d.error ? `${d.error.code} ${d.error.message} ${d.error.details ?? ""} ${d.error.hint ?? ""}` : "ok");
+  s = await st();
+}
 check("ops manager closes the shipment (AC-15)", r.value?.ok && s.overall_status === "closed" && !!s.closed_at && s.closure_note === "All complete (TEST)", err(r));
 const closedN = (await svc.from("notifications").select("id, payload").eq("template_key", "shipment.closed").eq("shipment_id", shipId)).data ?? [];
 check("client is told the shipment is closed", closedN.length > 0 && closedN[0].payload?.containers === 2, JSON.stringify(closedN[0]?.payload));

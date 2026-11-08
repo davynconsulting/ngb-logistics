@@ -2,9 +2,9 @@ import path from "node:path";
 import type { NextConfig } from "next";
 
 /*
- * Security headers. A full script CSP needs per-request nonces (planned for the
- * Sprint 5 security pass); these restrict framing, base/form targets and plugins
- * without touching Next.js scripts.
+ * Security headers for every response. Pages get their full Content-Security-Policy, with a
+ * per-request nonce, from proxy.ts (lib/security/csp.ts); this CSP covers what the proxy skips
+ * (static files, job endpoints) and is compatible with the page policy.
  */
 const SECURITY_HEADERS = [
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -31,8 +31,9 @@ const nextConfig: NextConfig = {
       { source: "/offline.html", headers: [{ key: "Cache-Control", value: "no-cache" }] },
     ];
   },
-  cacheComponents: true,
-  partialPrefetching: true,
+  // Off since Sprint 5: a nonce CSP needs every page rendered per request; prebuilt shells
+  // (Cache Components / partial prerendering) cannot carry the nonce. Measured cost: ~8 ms first byte.
+  cacheComponents: false,
   turbopack: {
     // Pin the project root: there's an unrelated package-lock.json in the home folder.
     root: path.join(__dirname),
