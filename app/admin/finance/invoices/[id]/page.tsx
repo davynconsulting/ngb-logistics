@@ -134,7 +134,7 @@ async function Invoice({ params, searchParams }: PageProps<"/admin/finance/invoi
                   <li key={p.id} className="flex flex-col gap-2 rounded-md border p-3 text-sm">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="font-medium tabular-nums">{formatAmount(p.amount, p.currency)}</span>
-                      {!p.review ? <Badge variant="secondary" className="bg-warning/25 text-warning-foreground">Awaiting verification</Badge>
+                      {!p.review ? <Badge variant="secondary" className="bg-warning/25 text-warning-foreground dark:text-warning">Awaiting verification</Badge>
                         : p.review.decision === "verified" ? <Badge variant="secondary" className="bg-success/15 text-success">Verified</Badge>
                         : <Badge variant="secondary" className="bg-destructive/10 text-destructive">Rejected</Badge>}
                     </div>

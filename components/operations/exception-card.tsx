@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 const SEVERITY_CLASS: Record<ExceptionSeverity, string> = {
   low: "bg-muted text-muted-foreground",
   medium: "bg-info/15 text-info",
-  high: "bg-warning/25 text-warning-foreground",
+  high: "bg-warning/25 text-warning-foreground dark:text-warning",
   critical: "bg-destructive/10 text-destructive",
 };
 

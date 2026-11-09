@@ -45,7 +45,7 @@ export function MilestoneTimeline({
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                 <span className={cn("font-medium", allVoided && "line-through")}>{labels.get(first.milestone_type) ?? first.milestone_type}</span>
                 <time className="text-sm text-muted-foreground" dateTime={first.event_at}>{formatDateTime(first.event_at, timeZone)}</time>
-                {first.is_override && <Badge variant="secondary" className="bg-warning/25 text-warning-foreground"><ShieldAlert aria-hidden /> Override</Badge>}
+                {first.is_override && <Badge variant="secondary" className="bg-warning/25 text-warning-foreground dark:text-warning"><ShieldAlert aria-hidden /> Override</Badge>}
                 {!first.client_visible && <Badge variant="outline"><EyeOff aria-hidden /> Staff only</Badge>}
                 {events.some((e) => e.is_corrected) && <Badge variant="outline">Corrected</Badge>}
                 {events.some((e) => e.is_voided) && <Badge variant="secondary" className="bg-destructive/10 text-destructive">

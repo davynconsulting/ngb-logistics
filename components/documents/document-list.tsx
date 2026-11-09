@@ -30,7 +30,7 @@ export type DocumentItem = {
 };
 
 const statusClass: Record<VerificationStatus, string> = {
-  pending: "bg-warning/25 text-warning-foreground",
+  pending: "bg-warning/25 text-warning-foreground dark:text-warning",
   verified: "bg-success/15 text-success",
   rejected: "bg-destructive/10 text-destructive",
 };

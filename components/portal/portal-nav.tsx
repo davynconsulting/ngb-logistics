@@ -52,7 +52,7 @@ export function PortalNav({ unread }: { unread: number }) {
                   <Icon className="size-5" aria-hidden />
                   {i.label}
                   {"badge" in i && unread > 0 && (
-                    <span className="absolute top-1.5 left-1/2 ml-1.5 min-w-4 rounded-full bg-destructive px-1 text-center text-[10px] leading-4 text-white" aria-label={`${count} unread`}>
+                    <span className="absolute top-1.5 left-1/2 ml-1.5 min-w-4 rounded-full bg-destructive px-1 text-center text-[10px] leading-4 text-white dark:text-primary-foreground" aria-label={`${count} unread`}>
                       {count}
                     </span>
                   )}

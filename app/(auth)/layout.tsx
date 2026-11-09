@@ -7,7 +7,7 @@ export default function AuthLayout({ children }: LayoutProps<"/">) {
       <header className="bg-primary text-primary-foreground">
         <div className="mx-auto flex max-w-5xl items-center px-4 py-4">
           <Link href="/" className="text-lg font-semibold tracking-tight">
-            NGB <span className="text-warning">LOGISTICS</span>
+            NGB <span className="text-warning dark:text-warning-foreground">LOGISTICS</span>
           </Link>
         </div>
       </header>

@@ -33,7 +33,7 @@ export function EtaPanel({
                 <div className="flex flex-wrap items-center gap-2">
                   <span>{r.previous_eta ? `${formatDateTime(r.previous_eta, timeZone)} → ` : ""}<strong>{formatDateTime(r.new_eta, timeZone)}</strong></span>
                   <span className="text-muted-foreground">{formatChange(r.change_minutes)}</span>
-                  {r.is_material ? <Badge variant="secondary" className="bg-warning/25 text-warning-foreground">Material</Badge> : <Badge variant="outline">Minor</Badge>}
+                  {r.is_material ? <Badge variant="secondary" className="bg-warning/25 text-warning-foreground dark:text-warning">Material</Badge> : <Badge variant="outline">Minor</Badge>}
                   {!r.client_visible && <Badge variant="outline">Staff only</Badge>}
                 </div>
                 <p className="text-xs text-muted-foreground">

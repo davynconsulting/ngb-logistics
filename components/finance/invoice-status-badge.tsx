@@ -8,7 +8,7 @@ const styles: Record<InvoiceStatus, string> = {
   partially_paid: "bg-info/15 text-info",
   paid: "bg-success/15 text-success",
   overdue: "bg-destructive/10 text-destructive",
-  disputed: "bg-warning/25 text-warning-foreground",
+  disputed: "bg-warning/25 text-warning-foreground dark:text-warning",
   void: "bg-muted text-muted-foreground line-through",
 };
 

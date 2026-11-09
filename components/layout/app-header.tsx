@@ -9,7 +9,7 @@ export function AppHeader({ home, label }: { home: string; label: string }) {
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
         <Link href={home} className="shrink-0 leading-tight">
           <span className="block text-base font-semibold tracking-tight">
-            NGB <span className="text-warning">LOGISTICS</span>
+            NGB <span className="text-warning dark:text-warning-foreground">LOGISTICS</span>
           </span>
           <span className="block text-xs opacity-80">{label}</span>
         </Link>

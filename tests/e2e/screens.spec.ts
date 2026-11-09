@@ -7,6 +7,8 @@ import { PASSWORD, signIn } from "./helpers";
 // Problems are collected across the whole tour and printed together, so one CI run lists them all.
 
 test.skip(!PASSWORD, "Set E2E_PASSWORD (the seeded test users' password)");
+// a tour visits up to 17 screens and runs axe on each: well over the default 30 s
+test.describe.configure({ timeout: 180_000 });
 
 type Problem = { page: string; kind: string; detail: string };
 

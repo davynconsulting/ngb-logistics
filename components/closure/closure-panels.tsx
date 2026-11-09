@@ -78,7 +78,7 @@ export function IncidentsPanel({
             <li key={i.id} className={`flex flex-col gap-2 rounded-md border p-3 text-sm ${i.status === "open" ? "border-warning/60" : ""}`}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-medium">{INCIDENT_TYPE_LABELS[i.incident_type]}{containerLabel(i.container_id) && <span className="font-mono font-normal"> · {containerLabel(i.container_id)}</span>}</span>
-                <Badge variant="secondary" className={i.status === "open" ? "bg-warning/25 text-warning-foreground" : "bg-success/15 text-success"}>
+                <Badge variant="secondary" className={i.status === "open" ? "bg-warning/25 text-warning-foreground dark:text-warning" : "bg-success/15 text-success"}>
                   {i.status === "open" ? "Open: blocks closure" : "Resolved"}
                 </Badge>
               </div>

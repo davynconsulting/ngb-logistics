@@ -32,7 +32,7 @@ export default function Home() {
       <header className="bg-primary text-primary-foreground">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
           <span className="text-lg font-semibold tracking-tight">
-            NGB <span className="text-warning">LOGISTICS</span>
+            NGB <span className="text-warning dark:text-warning-foreground">LOGISTICS</span>
           </span>
           <Button asChild variant="secondary" size="sm">
             <Link href="/login">Sign in</Link>

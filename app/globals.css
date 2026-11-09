@@ -81,11 +81,11 @@
   --ring: oklch(0.55 0.12 255);
 
   /* Status colours (shipment / finance badges, alerts) */
-  --success: oklch(0.52 0.13 155);
+  --success: oklch(0.47 0.13 155);   /* 5.0:1 as badge text on its 15% tint (WCAG AA) */
   --success-foreground: oklch(0.985 0 0);
   --warning: oklch(0.78 0.16 70);
   --warning-foreground: oklch(0.25 0.06 60);
-  --info: oklch(0.55 0.14 245);
+  --info: oklch(0.48 0.14 245);      /* 5.1:1 as badge text on its 15% tint */
   --info-foreground: oklch(0.985 0 0);
 
   --chart-1: oklch(0.33 0.09 255);

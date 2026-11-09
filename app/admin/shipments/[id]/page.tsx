@@ -46,7 +46,7 @@ export const metadata: Metadata = { title: "Shipment" };
 
 const sizeLabel = (s: string | null) => CONTAINER_SIZE_TYPES.find((x) => x.value === s)?.label ?? "—";
 const docStatusClass: Record<DocStatus, string> = {
-  missing: "bg-warning/25 text-warning-foreground",
+  missing: "bg-warning/25 text-warning-foreground dark:text-warning",
   received: "bg-info/15 text-info",
   under_review: "bg-info/15 text-info",
   complete: "bg-success/15 text-success",

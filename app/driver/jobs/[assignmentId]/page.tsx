@@ -59,36 +59,32 @@ async function Job({ params }: Pick<PageProps<"/driver/jobs/[assignmentId]">, "p
         description={`${stage.label} · ${job.client_name}`} />
 
       <Section title="Delivery">
+        {/* each row: div > dt (icon + label for screen readers) + dd (value), as <dl> requires */}
         <dl className="flex flex-col gap-3 text-sm">
           <div className="flex gap-2">
-            <MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
-            <div className="min-w-0">
-              <dt className="sr-only">Deliver to</dt>
-              <dd className="break-words font-medium">{job.client_name}</dd>
-              <dd className="break-words">{job.delivery_address || `${job.destination_city}, ${job.destination_country}`}</dd>
-            </div>
+            <dt className="mt-0.5 shrink-0"><MapPin className="size-4 text-muted-foreground" aria-hidden /><span className="sr-only">Deliver to</span></dt>
+            <dd className="min-w-0">
+              <span className="block break-words font-medium">{job.client_name}</span>
+              <span className="block break-words">{job.delivery_address || `${job.destination_city}, ${job.destination_country}`}</span>
+            </dd>
           </div>
           {(job.route_name || job.border_crossing) && (
             <div className="flex gap-2">
-              <Route className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
-              <div className="min-w-0">
-                <dt className="sr-only">Route</dt>
-                <dd className="break-words">{job.route_name ?? "Route"}{job.border_crossing ? ` · border: ${job.border_crossing}` : ""}</dd>
-              </div>
+              <dt className="mt-0.5 shrink-0"><Route className="size-4 text-muted-foreground" aria-hidden /><span className="sr-only">Route</span></dt>
+              <dd className="min-w-0 break-words">{job.route_name ?? "Route"}{job.border_crossing ? ` · border: ${job.border_crossing}` : ""}</dd>
             </div>
           )}
           <div className="flex gap-2">
-            <Truck className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
-            <div className="min-w-0">
-              <dt className="sr-only">Truck</dt>
-              <dd>{job.truck_registration}{job.trailer_registration ? ` / ${job.trailer_registration}` : ""} · {job.transporter_name}</dd>
-              {job.planned_loading_at && <dd className="text-muted-foreground">Loading planned {formatDateTime(job.planned_loading_at, tz)}</dd>}
-            </div>
+            <dt className="mt-0.5 shrink-0"><Truck className="size-4 text-muted-foreground" aria-hidden /><span className="sr-only">Truck</span></dt>
+            <dd className="min-w-0">
+              <span className="block">{job.truck_registration}{job.trailer_registration ? ` / ${job.trailer_registration}` : ""} · {job.transporter_name}</span>
+              {job.planned_loading_at && <span className="block text-muted-foreground">Loading planned {formatDateTime(job.planned_loading_at, tz)}</span>}
+            </dd>
           </div>
           {job.cargo_description && (
             <div className="flex gap-2">
-              <Package className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
-              <div className="min-w-0"><dt className="sr-only">Cargo</dt><dd className="break-words">{job.cargo_description}</dd></div>
+              <dt className="mt-0.5 shrink-0"><Package className="size-4 text-muted-foreground" aria-hidden /><span className="sr-only">Cargo</span></dt>
+              <dd className="min-w-0 break-words">{job.cargo_description}</dd>
             </div>
           )}
         </dl>

@@ -12,7 +12,7 @@ const TONES: Record<StatusTone, string> = {
   info: "bg-info/15 text-info",
   progress: "bg-primary/10 text-primary",
   success: "bg-success/15 text-success",
-  warning: "bg-warning/25 text-warning-foreground",
+  warning: "bg-warning/25 text-warning-foreground dark:text-warning",
 };
 
 export function ShipmentStatusBadge({ status, exception }: { status: ShipmentStatus; exception?: boolean }) {
@@ -22,7 +22,7 @@ export function ShipmentStatusBadge({ status, exception }: { status: ShipmentSta
         {SHIPMENT_STATUS_LABELS[status]}
       </Badge>
       {exception && (
-        <Badge variant="secondary" className="border-transparent bg-warning/25 text-warning-foreground">
+        <Badge variant="secondary" className="border-transparent bg-warning/25 text-warning-foreground dark:text-warning">
           Exception
         </Badge>
       )}
