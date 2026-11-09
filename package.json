@@ -17,6 +17,8 @@
     "test:db": "node tests/db/rls.check.mjs supabase/migrations",
     "test:live": "node --env-file=.env.local tests/live/run.mjs",
     "notify:run": "node --env-file=.env.local scripts/notify-run.mts",
+    "backup:export": "node --env-file=.env.local scripts/backup-export.mjs",
+    "backup:restore-check": "node scripts/backup-restore-check.mjs",
     "check:secrets": "node --env-file-if-exists=.env.local scripts/check-bundle-secrets.mjs"
   },
   "dependencies": {

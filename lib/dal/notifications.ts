@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { ago, healthVerdict } from "@/lib/domain/notifications";
 
 /*
  * Notification delivery health for operations managers/admins, read AS THE
@@ -42,3 +43,12 @@ export async function listFailedDeliveries(limit = 100) {
   }));
 }
 export type FailedDelivery = Awaited<ReturnType<typeof listFailedDeliveries>>[number];
+
+/** Is the sender keeping up? (notification_health, 0027; admin/ops_manager only) */
+export async function getNotificationHealth() {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("notification_health");
+  if (error || !data?.[0]) throw new Error("Could not load notification health");
+  return { ...data[0], verdict: healthVerdict(data[0], Date.now()), lastSentAgo: ago(data[0].last_sent_at, Date.now()) };
+}
+export type NotificationHealth = Awaited<ReturnType<typeof getNotificationHealth>>;

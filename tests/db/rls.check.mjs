@@ -11,48 +11,10 @@
 import { PGlite } from "@electric-sql/pglite";
 import fs from "node:fs";
 import path from "node:path";
+import { STUBS } from "./supabase-stubs.mjs";
 
 const dir = process.argv[2] ?? "supabase/migrations";
 const db = new PGlite();
-
-const STUBS = `
-create role anon nologin;
-create role authenticated nologin;
-create role service_role nologin bypassrls;
-grant usage on schema public to anon, authenticated, service_role;
-alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
-alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
-
-create schema auth;
-create table auth.users (
-  id uuid primary key default gen_random_uuid(),
-  email text,
-  raw_app_meta_data jsonb not null default '{}',
-  raw_user_meta_data jsonb not null default '{}',
-  last_sign_in_at timestamptz
-);
-create function auth.uid() returns uuid language sql stable as
-  $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
-grant usage on schema auth to anon, authenticated, service_role;
-grant execute on function auth.uid() to anon, authenticated, service_role;
-
-create schema storage;
-create table storage.buckets (
-  id text primary key, name text, public boolean,
-  file_size_limit bigint, allowed_mime_types text[]
-);
-create table storage.objects (
-  id uuid primary key default gen_random_uuid(),
-  bucket_id text references storage.buckets(id), name text, owner uuid,
-  metadata jsonb
-);
-alter table storage.objects enable row level security;
-create function storage.foldername(name text) returns text[] language sql immutable as
-  $$ select (string_to_array(name, '/'))[1:array_length(string_to_array(name, '/'), 1) - 1] $$;
-grant usage on schema storage to authenticated, anon, service_role;
-grant select, insert on storage.objects to authenticated;
-grant execute on function storage.foldername(text) to authenticated;
-`;
 
 let pass = 0, fail = 0;
 const ok = (name) => { pass++; console.log("  ✓", name); };
@@ -1379,6 +1341,58 @@ console.log("\n0026 security pass:");
   await expectRows("…and their own colleagues", cA, "select 1 from profiles where organization_id <> $1", 0, [A]);
   await expectError("return terms cannot be set by a direct container insert", ops,
     "insert into containers (shipment_id, container_number, return_deadline) values ($1, 'MSKU9999997', now())", /permission denied/, [sA.id]);
+}
+
+console.log("\n0027 notification resilience:");
+{
+  // start from a quiet queue: earlier sections leave messages waiting and older failures
+  await db.query("update notification_deliveries set state = 'sent' where state in ('pending', 'sending')");
+  await db.query("update notification_deliveries set created_at = now() - interval '48 hours' where state = 'failed'");
+  const H = "select * from notification_health()";
+  await expectError("doc officer cannot see notification health", doc, H, /Only an operations manager/);
+  await expectError("…nor a client", cA, H, /Only an operations manager/);
+  await expectError("…nor anon", "anon", H, /permission denied/);
+  // an outage: one message due for 20 minutes and nothing attempted for an hour
+  // (attempts are append-only: the owner lifts the trigger only to move time back, as for invoices_freeze)
+  await db.exec("alter table notification_delivery_attempts disable trigger notification_delivery_attempts_append_only");
+  await db.query("update notification_delivery_attempts set attempted_at = attempted_at - interval '1 hour'");
+  await db.exec("alter table notification_delivery_attempts enable trigger notification_delivery_attempts_append_only");
+  const stuck = (await db.query(`update notification_deliveries set state = 'pending', next_attempt_at = now() - interval '20 minutes', created_at = now() - interval '25 minutes'
+    where id = (select id from notification_deliveries where state = 'sent' order by created_at limit 1) returning id`)).rows[0].id;
+  let h = (await as(ops, H)).rows[0];
+  h?.stalled === true && h.pending_count === 1 && h.failed_24h === 0 && h.sender_paused === false && h.sender_configured === false && h.oldest_pending_at
+    ? ok("sender down → health says stalled, 1 waiting, not configured (no Vault here)") : bad("stalled", JSON.stringify(h));
+  const [row] = (await asService("select * from claim_notification_deliveries(10)")).rows;
+  await asService(CD, [row.delivery_id, true, "ok-after-outage", null, null, false, false, null]);
+  h = (await as(ops, H)).rows[0];
+  !h.stalled && h.pending_count === 0 && h.last_sent_at && Date.now() - new Date(h.last_sent_at) < 60e3
+    ? ok("sender back → no longer stalled, last send just now") : bad("recovered", JSON.stringify(h));
+  row.delivery_id === stuck ? ok("the waiting message was the one sent") : bad("stuck id", row.delivery_id);
+
+  // a 24 h+ outage: several messages ended failed; retried in one step
+  const failedIds = (await db.query(`update notification_deliveries set state = 'failed', error_code = 'expired', created_at = now() - interval '2 hours'
+    where id in (select id from notification_deliveries where state = 'sent' order by created_at desc limit 4) returning id, channel`)).rows;
+  const pushN = failedIds.filter((r) => r.channel === "push").length;
+  const R = "select retry_failed_deliveries($1::timestamptz, $2::notification_channel) n";
+  const since = new Date(Date.now() - 3 * 3600e3).toISOString();
+  await expectError("doc officer cannot bulk-retry", doc, R, /Only an operations manager/, [since, null]);
+  await expectError("anon cannot bulk-retry", "anon", R, /permission denied/, [since, null]);
+  await expectError("outage start in the future is refused", ops, R, /Choose when the outage started/, [new Date(Date.now() + 3600e3).toISOString(), null]);
+  await expectError("…and so is no start", ops, R, /Choose when the outage started/, [null, null]);
+  const nPush = (await as(ops, R, [since, "push"])).rows[0].n;
+  nPush === pushN ? ok(`channel filter: only push retried (${pushN})`) : bad("push only", `${nPush} vs ${pushN}`);
+  const nRest = (await as(ops, R, [since, null])).rows[0].n;
+  nRest === failedIds.length - pushN ? ok("the rest retried with no channel filter") : bad("rest", `${nRest}`);
+  await expectRows("all are pending again, attempts reset, 24 h window restarted", null,
+    "select 1 from notification_deliveries where id = any($1) and state = 'pending' and attempt_count = 0 and created_at > now() - interval '1 minute'",
+    failedIds.length, [failedIds.map((r) => r.id)]);
+  await expectRows("older failures (before the outage start) are left alone", null,
+    "select 1 from notification_deliveries where state = 'failed' and created_at >= $1", 0, [since]);
+  const audits = (await db.query("select actor_id, new_data from audit_log where record_id = 'bulk-retry' order by id")).rows;
+  audits.length === (pushN ? 2 : 1) && audits.every((a) => a.actor_id === ops)
+    ? ok("each bulk retry is in the audit log with who did it") : bad("audit", JSON.stringify(audits));
+  ((await as(ops, R, [since, null])).rows[0].n === 0) ? ok("nothing failed → nothing retried, no audit row") : bad("idempotent", "");
+  await db.query("update notification_deliveries set state = 'sent' where state in ('pending', 'sending')"); // tidy
 }
 
 console.log("\nSecurity invariants (all migrations):");

@@ -3,8 +3,11 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { BellRing, MessageCircle } from "lucide-react";
 import { requireStaff } from "@/lib/dal/session";
-import { getDeliveryStats, listFailedDeliveries, type FailedDelivery } from "@/lib/dal/notifications";
-import { retryDelivery } from "@/lib/actions/notifications";
+import { getDeliveryStats, getNotificationHealth, listFailedDeliveries, type FailedDelivery, type NotificationHealth } from "@/lib/dal/notifications";
+import { retryDelivery, retryFailedSince, setSenderPaused } from "@/lib/actions/notifications";
+import { RETRY_WINDOWS } from "@/lib/domain/notifications";
+import { Label } from "@/components/ui/label";
+import { NativeSelect } from "@/components/ui/native-select";
 import { formatDateTime } from "@/lib/format";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import { PageHeader } from "@/components/layout/page-header";
@@ -27,9 +30,10 @@ export default function NotificationsPage({ searchParams }: PageProps<"/admin/no
 }
 
 async function Health({ searchParams }: Pick<PageProps<"/admin/notifications">, "searchParams">) {
-  await requireStaff("admin", "ops_manager");
+  const user = await requireStaff("admin", "ops_manager");
   const sp = await searchParams;
-  const [stats, failed] = await Promise.all([getDeliveryStats(), listFailedDeliveries()]);
+  const [stats, failed, health] = await Promise.all([getDeliveryStats(), listFailedDeliveries(), getNotificationHealth()]);
+  const bulk = typeof sp.bulk === "string" ? sp.bulk : undefined;
 
   return (
     <>
@@ -40,6 +44,13 @@ async function Health({ searchParams }: Pick<PageProps<"/admin/notifications">, 
       <div className="flex flex-col gap-6">
         {sp.retry === "ok" && <FormAlert kind="success">Queued again. The sender will try within a minute.</FormAlert>}
         {sp.retry === "failed" && <FormAlert kind="error">That message could not be retried. It may already have been retried.</FormAlert>}
+        {bulk && /^\d+$/.test(bulk) && <FormAlert kind="success">{bulk === "0" ? "Nothing to retry in that period." : `${bulk} message${bulk === "1" ? "" : "s"} queued again. The sender works through them within a few minutes.`}</FormAlert>}
+        {bulk === "failed" && <FormAlert kind="error">The messages could not be queued again. Please try again.</FormAlert>}
+        {sp.pause === "on" && <FormAlert kind="success">Sending is paused. Messages keep queuing.</FormAlert>}
+        {sp.pause === "off" && <FormAlert kind="success">Sending resumed. Waiting messages go out within a minute.</FormAlert>}
+        {sp.pause === "failed" && <FormAlert kind="error">The pause switch could not be changed.</FormAlert>}
+
+        <HealthPanel h={health} canPause={user.role === "admin"} />
 
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {STAT_LABELS.map(([k, label]) => (
@@ -58,6 +69,7 @@ async function Health({ searchParams }: Pick<PageProps<"/admin/notifications">, 
 
         <section className="flex flex-col gap-3">
           <h2 className="text-lg font-medium">Failed messages ({stats.failedTotal})</h2>
+          {stats.failedTotal > 0 && <BulkRetry />}
           {failed.length === 0 ? (
             <p className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">No failed messages.</p>
           ) : (
@@ -68,6 +80,55 @@ async function Health({ searchParams }: Pick<PageProps<"/admin/notifications">, 
         </section>
       </div>
     </>
+  );
+}
+
+const LEVEL = {
+  ok: "border-success/30 bg-success/10",
+  warning: "border-warning/50 bg-warning/15",
+  error: "border-destructive/30 bg-destructive/10",
+} as const;
+
+/** Is the sender keeping up? Shown first, so an outage is obvious (AC-18). */
+function HealthPanel({ h, canPause }: { h: NotificationHealth; canPause: boolean }) {
+  const v = h.verdict;
+  return (
+    <section aria-labelledby="sender-health" className={`flex flex-col gap-3 rounded-lg border p-4 ${LEVEL[v.level]}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-col gap-1">
+          <h2 id="sender-health" className="font-medium" {...(v.level === "error" ? { role: "alert" } : {})}>{v.title}</h2>
+          <p className="text-sm">{v.detail}</p>
+        </div>
+        {canPause ? (
+          <form action={setSenderPaused.bind(null, !h.sender_paused)}>
+            <Button type="submit" size="sm" variant="outline">{h.sender_paused ? "Resume sending" : "Pause sending"}</Button>
+          </form>
+        ) : h.sender_paused ? <p className="text-xs">An admin can resume sending.</p> : null}
+      </div>
+    </section>
+  );
+}
+
+/** After an outage: put every failed message queued in a period back in the queue at once. */
+function BulkRetry() {
+  return (
+    <form action={retryFailedSince} className="flex flex-col gap-3 rounded-lg border bg-card p-4 sm:flex-row sm:items-end">
+      <div className="flex flex-1 flex-col gap-1.5">
+        <Label htmlFor="bulk-hours">Retry failed messages queued in the</Label>
+        <NativeSelect id="bulk-hours" name="hours" defaultValue="24">
+          {RETRY_WINDOWS.map((w) => <option key={w.hours} value={w.hours}>{w.label}</option>)}
+        </NativeSelect>
+      </div>
+      <div className="flex flex-1 flex-col gap-1.5">
+        <Label htmlFor="bulk-channel">Channel</Label>
+        <NativeSelect id="bulk-channel" name="channel" defaultValue="all">
+          <option value="all">Push and WhatsApp</option>
+          <option value="push">Push only</option>
+          <option value="whatsapp">WhatsApp only</option>
+        </NativeSelect>
+      </div>
+      <Button type="submit" variant="outline">Retry all</Button>
+    </form>
   );
 }
 

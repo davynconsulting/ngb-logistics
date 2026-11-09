@@ -53,3 +53,6 @@ next-env.d.ts
 
 # client reference documents (kept locally, not published)
 /reference/*.pdf
+
+# backup drill exports (personal data: never commit)
+/backups/

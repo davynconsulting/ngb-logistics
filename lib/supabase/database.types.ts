@@ -2597,6 +2597,19 @@ export type Database = {
         }
         Returns: string
       }
+      notification_health: {
+        Args: never
+        Returns: {
+          failed_24h: number
+          last_attempt_at: string
+          last_sent_at: string
+          oldest_pending_at: string
+          pending_count: number
+          sender_configured: boolean
+          sender_paused: boolean
+          stalled: boolean
+        }[]
+      }
       open_exception: {
         Args: {
           p_client_message?: string
@@ -2766,6 +2779,13 @@ export type Database = {
       resolve_incident: {
         Args: { p_incident_id: string; p_resolution: string }
         Returns: undefined
+      }
+      retry_failed_deliveries: {
+        Args: {
+          p_channel?: Database["public"]["Enums"]["notification_channel"]
+          p_since: string
+        }
+        Returns: number
       }
       retry_notification_delivery: {
         Args: { p_delivery_id: string }
