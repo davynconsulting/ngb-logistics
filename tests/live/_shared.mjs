@@ -18,8 +18,11 @@ export const BUCKET = "shipment-documents";
 // run one at a time with LIVE_READ_ONLY=1 and STAGING_PROJECT_REF from .env.staging.local; never the full runner.
 const STAGING = process.env.STAGING_PROJECT_REF;
 const onStaging = !!STAGING && /^[a-z]{20}$/.test(STAGING) && URL_ === `https://${STAGING}.supabase.co`;
-if (onStaging && (process.env.LIVE_READ_ONLY !== "1" || globalThis.__LIVE_RUNNER__)) {
-  throw new Error("On staging only the read-only suites run, one at a time, with LIVE_READ_ONLY=1");
+// The full (writing) run on staging is the acceptance run only (FRS §12): LIVE_STAGING_ACCEPTANCE=1, against the
+// deployed site, with a local build made with the same NEXT_SERVER_ACTIONS_ENCRYPTION_KEY (see docs/acceptance.md).
+const acceptance = onStaging && process.env.LIVE_STAGING_ACCEPTANCE === "1";
+if (onStaging && !acceptance && (process.env.LIVE_READ_ONLY !== "1" || globalThis.__LIVE_RUNNER__)) {
+  throw new Error("On staging only the read-only suites run, one at a time, with LIVE_READ_ONLY=1 (or the acceptance run, LIVE_STAGING_ACCEPTANCE=1)");
 }
 if (!onStaging && !URL_?.includes("idyydcuihxkyitylkugo")) throw new Error("Live checks only run against the dev project");
 

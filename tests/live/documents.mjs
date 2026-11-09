@@ -127,7 +127,9 @@ check("other client gets 404 (guessed link)", other.status === 404, other.status
 const anon = await get(`/documents/${d2}`);
 check("signed-out → login, then back to the document", anon.status === 303 && anon.headers.get("location")?.includes(`/login?next=%2Fdocuments%2F${d2}`), anon.headers.get("location"));
 check("unknown id → 404", (await get(`/documents/00000000-0000-4000-8000-000000000000`, admin)).status === 404);
-check("malformed id → 404", (await get(`/documents/..%2F..%2Fadmin`, admin)).status === 404);
+// the app answers 404; Vercel's edge already refuses encoded path traversal with 400
+const malformed = (await get(`/documents/..%2F..%2Fadmin`, admin)).status;
+check("malformed id → refused (404 from the app, or 400 from the hosting edge)", malformed === 404 || malformed === 400, malformed);
 
 await action(doc, "setDocumentVisibility", [d2, false], page);
 const { data: hid } = await svc.from("documents").select("client_visible").eq("id", d2).single();

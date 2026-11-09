@@ -116,7 +116,8 @@ check("…and marks it read", !!(await svc.from("notifications").select("read_at
 const jeanNote = (await jean.api.from("notifications").select("id, read_at").is("read_at", null).limit(1)).data?.[0];
 if (jeanNote) {
   r = await action(aline, "openNotification", [jeanNote.id], "/portal/notifications");
-  check("a client cannot open another client's notification", (r.redirect ?? "") === "/portal/notifications"
+  // Next appends the navigation kind (";push") to redirect targets in action responses
+  check("a client cannot open another client's notification", (r.redirect ?? "").replace(/;(push|replace)$/, "") === "/portal/notifications"
     && !(await svc.from("notifications").select("read_at").eq("id", jeanNote.id).single()).data.read_at, r.redirect);
 }
 await action(aline, "markAllRead", [], "/portal/notifications");

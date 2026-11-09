@@ -8,9 +8,9 @@ Release 1 (Phase 1) of the NGB LOGISTICS Cargo Tracking PWA, against FRS v1.0 §
   - typecheck, lint, unit tests, database checks, build, secrets scan;
   - Playwright on a 390 px phone and on desktop;
   - axe, Lighthouse and Chrome's installability check.
-- **Staging:** Supabase `ngb-logistics-staging` plus `https://ngb-logistics-staging.vercel.app`. Fictional data only. So far it has had only the read-only suites and the manual checks in `docs/deploy-staging.md`.
+- **Staging:** Supabase `ngb-logistics-staging` plus `https://ngb-logistics-staging.vercel.app`. Fictional data only. The full live suite ran there as the acceptance run (see below), plus the manual checks in `docs/deploy-staging.md`.
 
-**The FRS asks for the acceptance tests to pass in staging.** Staging runs the same migrations and code as dev; the difference is the hosting. See "Acceptance run on staging" below.
+**The FRS asks for the acceptance tests to pass in staging.** They do: see "Acceptance run on staging" below.
 
 ## Test inventory
 
@@ -21,7 +21,7 @@ Release 1 (Phase 1) of the NGB LOGISTICS Cargo Tracking PWA, against FRS v1.0 §
 | `npm run test:live` (dev) | 14 suites, real flows over HTTP against the production build | 477 / 477 |
 | `npm run test:e2e` (CI) | Browser flows, 360 px screen tour with axe (WCAG 2.2 AA), dark-mode contrast, CSP violations, installability | 44 / 44 (CI run 42652328863). An earlier run had 2 desktop timing failures (confirmations after the 5 s limit); the assertion timeout is now 15 s. |
 | Lighthouse (CI) | 8 pages, signed in where relevant | Performance 99–100, Accessibility 100, Best practices 100 |
-| Staging, read-only | `security.mjs`, `reports.mjs` against the deployed site | 19 / 19 (2 sections skipped, see below), 15 / 15 |
+| **Staging acceptance run** | The full live suite (14 suites, including the server-action role matrix) against the deployed site `https://ngb-logistics-staging.vercel.app` | 471 / 473, then 2 test fixes; the two affected suites rerun 59 / 59 and 36 / 36 (see below) |
 | Backup drill | Export from dev, restored and verified in memory; a tampered copy is rejected | 23 / 23 |
 
 ## Acceptance criteria
@@ -51,16 +51,23 @@ Release 1 (Phase 1) of the NGB LOGISTICS Cargo Tracking PWA, against FRS v1.0 §
 
 **Result:** 15 criteria pass. AC-06 and AC-17 pass in automated tests and need a hands-on check on real phones. AC-07 waits for the choice of WhatsApp provider.
 
-## Acceptance run on staging (proposed)
+## Acceptance run on staging (9 Nov 2026)
 
-The read-only suites already pass on staging. The suites that write data can't reach the deployed site yet, because Next salts server-action ids per build. Two ways to close this:
+How it was run:
+- The full live suite ran against the deployed staging site `https://ngb-logistics-staging.vercel.app` and its Supabase project.
+- `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` is set on the Vercel staging project (sensitive) and was used for a local build, so server-action ids match. Checked: `signIn` has the same id in the deployed JavaScript.
+- Command: `LIVE_STAGING_ACCEPTANCE=1 LIVE_APP_URL=https://ngb-logistics-staging.vercel.app node --env-file=.env.staging.local tests/live/run.mjs`. Without that flag, staging allows only the read-only suites.
 
-1. **Same action key on both sides (recommended).**
-   - Set `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` on the Vercel staging project and for a local build, then redeploy.
-   - Action ids then match, and the full `test:live` runs against `https://ngb-logistics-staging.vercel.app` once, as the acceptance run.
-   - It adds fictional test data to staging (shipments marked TEST), which is acceptable there.
-   - Needs approval: a new Vercel secret and a redeploy.
-2. **Local app, staging database.** Run the full suite with a local build pointed at the staging Supabase. This tests the staging database and configuration, but not Vercel.
+**Result:** 471 of 473 passed. The two failures were in the tests, not the app:
+
+| Check | What happened | Change |
+|---|---|---|
+| Malformed document id (`/documents/..%2F..%2Fadmin`) | Vercel's edge refuses encoded path traversal with **400** before it reaches the app; locally the app answers 404. Access is refused either way. | The test accepts 404 or 400. |
+| Opening another client's notification | The app redirected to the client's own inbox and didn't mark the other notification read, as required. The redirect value carries Next's `;push` suffix, and the check compared exact text. On dev this check never ran (the other client has no notifications there). | The test ignores the suffix. |
+
+Both suites were rerun on staging after the fix: documents 59 / 59, portal 36 / 36.
+
+The run added fictional TEST shipments, invoices and notifications to staging.
 
 ## Sprint 5 summary
 
@@ -84,7 +91,7 @@ The read-only suites already pass on staging. The suites that write data can't r
 - [ ] Production domain, for example `track.<ngb-domain>`.
 
 **Acceptance on staging**
-- [ ] Approve the acceptance run, option 1 or 2 above.
+- [x] Acceptance run on staging (option 1): passed, see above.
 - [ ] Real-phone test: Android Chrome and iPhone 16.4+ from the home screen. Sign in, turn on push, receive a milestone notification (AC-06, AC-17).
 - [ ] Staff training on staging with `docs/staff-guide.md`, one session per role.
 - [ ] NGB signs off the AC table above.
