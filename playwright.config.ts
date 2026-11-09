@@ -16,6 +16,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
+  // Server actions run from the CI runner to the dev database (eu-west-1) and re-render the page;
+  // with both projects in parallel a confirmation can take longer than the 5 s default.
+  expect: { timeout: 15_000 },
   reporter: [["list"], ["html", { open: "never" }]],
   use: { baseURL, trace: "on-first-retry" },
   projects: [
