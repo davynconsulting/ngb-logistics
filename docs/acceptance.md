@@ -112,6 +112,6 @@ The run added fictional TEST shipments, invoices and notifications to staging.
 
 **Housekeeping**
 - [ ] Clean up dev test data (or keep dev as a test-only project).
-- [ ] Move `shadcn` to devDependencies (clears the `npm audit` warnings in production dependencies).
-- [ ] Delete the backup drill copy `backups/2026-11-09T07-52-17-247Z` when no longer needed.
+- [x] Moved `shadcn` to devDependencies: `npm audit --omit=dev` now reports 0 vulnerabilities (was 6 low/moderate). It's needed only at build time (`globals.css` imports its Tailwind styles).
+- [x] Deleted the backup drill copy (9 Nov 2026).
 - [ ] Screen-reader pass (VoiceOver / TalkBack) during the pilot.
