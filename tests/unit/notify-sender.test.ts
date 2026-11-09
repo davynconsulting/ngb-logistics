@@ -89,6 +89,24 @@ describe("notification sender", () => {
     expect(String(db.by(d.delivery_id).p_provider_message_id)).toMatch(/^mock:mock-wa-/);
   });
 
+  it("one person's messages go out in queue order, even when earlier sends are slower (outage backlog)", async () => {
+    const outbox: WhatsAppMessage[] = [];
+    const inner = mockWhatsApp({ outbox });
+    const slow = { name: "mock", send: async (m: WhatsAppMessage) => {   // earlier messages take longer
+      await new Promise((r) => setTimeout(r, m.text.includes("step 0") ? 30 : m.text.includes("step 1") ? 15 : 1));
+      return inner.send(m);
+    } } as ReturnType<typeof mockWhatsApp>;
+    const alice = crypto.randomUUID(), bob = crypto.randomUUID();
+    const row = (who: string, phone: string, i: number) => base({ channel: "whatsapp", recipient_id: who, whatsapp_phone: phone,
+      payload: { reference: "NGB-2026-00031", label: `step ${i}`, containers: [] } });
+    const rows = [row(alice, "+250000000001", 0), row(bob, "+250000000002", 0), row(alice, "+250000000001", 1), row(alice, "+250000000001", 2), row(bob, "+250000000002", 1)];
+    const sum = await runSender({ rpc: fakeDb(rows).rpc, vapid: null, whatsapp: slow });
+    expect(sum.sent).toBe(5);
+    const steps = (to: string) => outbox.filter((m) => m.to === to).map((m) => m.text.match(/step (\d)/)?.[1]);
+    expect(steps("+250000000001")).toEqual(["0", "1", "2"]);
+    expect(steps("+250000000002")).toEqual(["0", "1"]);
+  });
+
   it("WhatsApp outage → retried; rejection → failed; consent withdrawn → suppressed", async () => {
     const out = base({ channel: "whatsapp", whatsapp_phone: "+250788000001" });
     let db = fakeDb([out]);

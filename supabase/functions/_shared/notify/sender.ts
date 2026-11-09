@@ -143,9 +143,16 @@ export async function runSender(cfg: SenderConfig, opts: { limit?: number; maxBa
     if (!rows?.length) break;
     sum.claimed += rows.length;
 
-    const queue = [...rows];
+    // One person's messages on one channel go out one after another, in queue order (the claim
+    // returns rows oldest first), so a backlog never overtakes itself; different people in parallel.
+    const groups = new Map<string, ClaimedDelivery[]>();
+    for (const r of rows) {
+      const k = `${r.recipient_id}|${r.channel}`;
+      groups.set(k, [...(groups.get(k) ?? []), r]);
+    }
+    const queue = [...groups.values()];
     const worker = async () => {
-      for (let d = queue.shift(); d; d = queue.shift()) {
+      for (let g = queue.shift(); g; g = queue.shift()) for (const d of g) {
         const c = await deliver(cfg, d);
         try {
           await complete(cfg, d, c);
@@ -160,7 +167,7 @@ export async function runSender(cfg: SenderConfig, opts: { limit?: number; maxBa
         }
       }
     };
-    await Promise.all(Array.from({ length: Math.min(cfg.concurrency ?? 6, rows.length) }, worker));
+    await Promise.all(Array.from({ length: Math.min(cfg.concurrency ?? 6, queue.length) }, worker));
     if (rows.length < limit) break;
   }
   return sum;

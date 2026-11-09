@@ -1395,6 +1395,23 @@ console.log("\n0027 notification resilience:");
   await db.query("update notification_deliveries set state = 'sent' where state in ('pending', 'sending')"); // tidy
 }
 
+console.log("\n0028 notification order:");
+{
+  // three messages for one person, due at the same moment (as after a bulk retry). Each is
+  // rewritten newest event first, so stored order is the reverse of event order: an unordered
+  // claim returns them newest first, the fixed one oldest first.
+  const picked = (await db.query(`select d.id, d.notification_id from notification_deliveries d join notifications n on n.id = d.notification_id
+     where n.recipient_id = $1 and d.channel = 'push' order by d.id desc limit 3`, [cA])).rows;
+  for (const [i, r] of picked.entries()) {
+    await db.query("update notifications set created_at = now() - make_interval(mins => $2::int) where id = $1", [r.notification_id, 10 + i * 10]);
+    await db.query("update notification_deliveries set state = 'pending', next_attempt_at = now() - interval '1 minute', created_at = now() where id = $1", [r.id]);
+  }
+  const got = (await asService("select delivery_id from claim_notification_deliveries(500)")).rows.map((r) => r.delivery_id);
+  picked.length === 3 && JSON.stringify(got) === JSON.stringify(picked.map((r) => r.id).reverse())
+    ? ok("claim returns one person's due messages oldest first (by when the event happened, not retry time)") : bad("order", JSON.stringify({ got, want: picked.map((r) => r.id).reverse() }));
+  await db.query("update notification_deliveries set state = 'sent', locked_until = null where state in ('pending', 'sending')"); // tidy
+}
+
 console.log("\nSecurity invariants (all migrations):");
 const none = async (name, sql) => {
   const rows = (await db.query(sql)).rows;
