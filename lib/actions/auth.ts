@@ -1,9 +1,9 @@
 "use server";
 
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { siteOrigin } from "@/lib/site-origin";
 import { homePathFor, isAppRole, safeNextPath } from "@/lib/auth/roles";
 import { emailField } from "@/lib/validation/common";
 
@@ -87,12 +87,6 @@ export async function signOut(formData?: FormData): Promise<void> {
 }
 
 /** Absolute URL of this deployment, used for links in auth emails. */
-async function siteOrigin(): Promise<string> {
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") || /^\d/.test(host) ? "http" : "https");
-  return `${proto}://${host}`;
-}
 
 export async function requestPasswordReset(_prev: FormState, formData: FormData): Promise<FormState> {
   const parsed = emailSchema.safeParse(formData.get("email"));

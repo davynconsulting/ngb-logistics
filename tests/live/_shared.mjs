@@ -14,7 +14,14 @@ export const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 export const PW = process.env.SEED_USER_PASSWORD;
 export const APP = process.env.LIVE_APP_URL ?? "http://localhost:3123";
 export const BUCKET = "shipment-documents";
-if (!URL_?.includes("idyydcuihxkyitylkugo")) throw new Error("Live checks only run against the dev project");
+// Dev only. Staging (fictional data) is allowed for the READ-ONLY suites (security.mjs, reports.mjs),
+// run one at a time with LIVE_READ_ONLY=1 and STAGING_PROJECT_REF from .env.staging.local; never the full runner.
+const STAGING = process.env.STAGING_PROJECT_REF;
+const onStaging = !!STAGING && /^[a-z]{20}$/.test(STAGING) && URL_ === `https://${STAGING}.supabase.co`;
+if (onStaging && (process.env.LIVE_READ_ONLY !== "1" || globalThis.__LIVE_RUNNER__)) {
+  throw new Error("On staging only the read-only suites run, one at a time, with LIVE_READ_ONLY=1");
+}
+if (!onStaging && !URL_?.includes("idyydcuihxkyitylkugo")) throw new Error("Live checks only run against the dev project");
 
 /** Every request gives up after 60 s, so a stalled connection fails a check instead of freezing the run. */
 const timedFetch = (url, opts = {}) => fetch(url, { ...opts, signal: opts.signal ?? AbortSignal.timeout(60_000) });

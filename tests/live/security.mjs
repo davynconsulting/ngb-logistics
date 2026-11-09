@@ -126,6 +126,11 @@ check(`signed-out users can call none of the ${RPCS.length} database functions`,
 for (const k of Object.keys(extra)) check(`${k}: no function outside its own returns data`, extra[k].length === 0, extra[k].join(", "));
 
 // ---- C. server actions ----
+// Needs the action ids of the build under test. Next salts them per build, so they are known only for
+// a local build (next start); against a deployed site (staging) this section is skipped: it runs on dev.
+const localBuild = /^http:\/\/(localhost|127\.0\.0\.1)[:/]/.test(APP + "/");
+if (!localBuild) console.log("SKIP  server-action guards: action ids are salted per build; run against a local build (covered on dev)");
+if (localBuild) {
 // Allowed roles, read from each action's guard in lib/actions (the code under test declares them;
 // what is checked here is that the running server enforces them before doing any work).
 const STAFF = ["admin", "ops_manager", "doc_officer", "clearing_agent", "transport_coord", "driver", "finance"];
@@ -179,6 +184,7 @@ check(`signed-out users cannot run any of the ${userOnly.length} signed-in actio
 const foreign = await fetch(APP + "/portal", { method: "POST", redirect: "manual", body: await encodeReply([]),
   headers: { cookie: U.client.cookie, "Next-Action": actionId("runSlaCheck"), Accept: "text/x-component", "Content-Type": "text/plain;charset=UTF-8" } });
 check("a staff action sent to a client page is not executed", !(foreign.headers.get("content-type") ?? "").includes("text/x-component"));
+}
 
 // ---- D. guessing another client's identifiers (Akagera user against Kivu Hardware) ----
 const kShip = ships.find((s) => s.client_id === K);
@@ -216,7 +222,10 @@ if (kNote) {
   const { data: n } = await svc.from("notifications").select("read_at").eq("id", kNote.id).single();
   check("opening another user's notification does not mark it read", n.read_at === before.read_at);
 }
-check("guessing tests had another client's data to aim at", !!(kShip && aInv && aRcpt && kDoc && kNote), JSON.stringify({ ship: !!kShip, inv: !!aInv, rcpt: !!aRcpt, doc: !!kDoc, note: !!kNote }));
+// staging's seed has no invoices yet: there the finance guesses are reported as skipped instead
+const financeOptional = process.env.LIVE_READ_ONLY === "1";
+if (financeOptional && !(aInv && aRcpt)) console.log("SKIP  invoice/receipt guessing: no issued invoices in this project");
+check("guessing tests had another client's data to aim at", !!(kShip && kDoc && kNote && (financeOptional || (aInv && aRcpt))), JSON.stringify({ ship: !!kShip, inv: !!aInv, rcpt: !!aRcpt, doc: !!kDoc, note: !!kNote }));
 
 // ---- E. Content-Security-Policy: a fresh nonce on every page, carried by every script we send ----
 {

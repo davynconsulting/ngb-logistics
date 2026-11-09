@@ -1,7 +1,7 @@
 /**
  * NGB LOGISTICS: development seed data (Sprint 1, Task 3)
  *
- * Creates FICTIONAL test data in the hosted DEV project only:
+ * Creates FICTIONAL test data in the hosted DEV project (or the STAGING project, see below) only:
  *   • the NGB organization + 4 fictional client companies (names end in "(TEST)")
  *   • one staff user per role + 2 users per client (all @….example emails,
  *     a reserved domain, so no real person is ever emailed)
@@ -30,10 +30,16 @@ const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 const password = process.env.SEED_USER_PASSWORD ?? "";
 
-if (!url.includes(DEV_PROJECT_REF)) {
-  console.error(`Refusing to seed: this script only runs against the dev project (${DEV_PROJECT_REF}).`);
+// The staging project (fictional data for acceptance and training) is allowed only when named
+// explicitly in its own env file (.env.staging.local: STAGING_PROJECT_REF). Never a production project.
+const STAGING_PROJECT_REF = process.env.STAGING_PROJECT_REF ?? "";
+const allowed = [DEV_PROJECT_REF, STAGING_PROJECT_REF].filter((r) => /^[a-z]{20}$/.test(r));
+const target = allowed.find((r) => new URL(url || "http://x").hostname === `${r}.supabase.co`);
+if (!target) {
+  console.error(`Refusing to seed: this script only runs against the dev project (${DEV_PROJECT_REF}) or the staging project named in STAGING_PROJECT_REF.`);
   process.exit(1);
 }
+console.log(`Seeding ${target === DEV_PROJECT_REF ? "DEV" : "STAGING"} project ${target}`);
 if (!serviceKey) {
   console.error("SUPABASE_SERVICE_ROLE_KEY is missing from .env.local");
   process.exit(1);

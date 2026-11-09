@@ -14,6 +14,8 @@
     "test:lighthouse": "node tests/lighthouse/run.mjs",
     "db:types": "supabase gen types typescript --remote=idyydcuihxkyitylkugo --schema public > lib/supabase/database.types.ts",
     "db:seed": "node --env-file=.env.local scripts/seed-dev.mts",
+    "db:seed:staging": "node --env-file=.env.staging.local scripts/seed-dev.mts",
+    "staging": "node scripts/staging.mjs",
     "test:db": "node tests/db/rls.check.mjs supabase/migrations",
     "test:live": "node --env-file=.env.local tests/live/run.mjs",
     "notify:run": "node --env-file=.env.local scripts/notify-run.mts",

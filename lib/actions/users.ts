@@ -1,9 +1,9 @@
 "use server";
 
-import { headers } from "next/headers";
 import { refresh } from "next/cache";
 import { requireStaff } from "@/lib/dal/session";
 import { createClient } from "@/lib/supabase/server";
+import { siteOrigin } from "@/lib/site-origin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { inviteUserSchema } from "@/lib/validation/user";
 import { fieldErrors, type ActionState } from "@/lib/validation/common";
@@ -19,12 +19,6 @@ import { fieldErrors, type ActionState } from "@/lib/validation/common";
 
 type InviteState = (NonNullable<ActionState> & { inviteLink?: string; invitedEmail?: string }) | undefined;
 
-async function siteOrigin() {
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") || /^\d/.test(host) ? "http" : "https");
-  return `${proto}://${host}`;
-}
 
 export async function inviteUser(_prev: InviteState, formData: FormData): Promise<InviteState> {
   const actor = await requireStaff("admin", "ops_manager");

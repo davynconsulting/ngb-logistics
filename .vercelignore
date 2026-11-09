@@ -1,0 +1,9 @@
+# Never uploaded to Vercel (personal data, secrets, local artefacts)
+backups/
+.env*
+reference/
+tests/
+test-results/
+playwright-report/
+lighthouse-report/
+supabase/.temp/

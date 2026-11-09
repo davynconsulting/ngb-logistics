@@ -1,15 +1,15 @@
 /*
- * Adds the notification keys to .env.local if they are missing:
+ * Adds the notification keys to .env.local (or the env file given) if they are missing:
  *   NEXT_PUBLIC_VAPID_PUBLIC_KEY  (public; the browser subscribes with it)
  *   VAPID_PRIVATE_KEY             (server only)
  *   VAPID_SUBJECT                 (contact for push services)
  *   NOTIFY_SENDER_SECRET          (server only; pg_cron → edge function)
  * Never overwrites existing values and prints names only, never values.
- * Usage: node scripts/gen-notify-keys.mts
+ * Usage: node scripts/gen-notify-keys.mts [env file, default .env.local]
  */
 import { existsSync, readFileSync, appendFileSync } from "node:fs";
 
-const FILE = ".env.local";
+const FILE = process.argv[2] ?? ".env.local";   // e.g. .env.staging.local
 const b64url = (b: ArrayBuffer | Uint8Array) => Buffer.from(b instanceof Uint8Array ? b : new Uint8Array(b)).toString("base64url");
 
 const current = existsSync(FILE) ? readFileSync(FILE, "utf8") : "";
@@ -34,5 +34,5 @@ if (names.length === 0) {
 } else {
   const lines = names.map((k) => `${k}=${add[k]}`).join("\n");
   appendFileSync(FILE, `${current.endsWith("\n") || !current ? "" : "\n"}\n# Notifications (Sprint 3)\n${lines}\n`);
-  console.log(`Added to .env.local: ${names.join(", ")}`);
+  console.log(`Added to ${FILE}: ${names.join(", ")}`);
 }
