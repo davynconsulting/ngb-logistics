@@ -4,6 +4,25 @@ This guide is for NGB staff using the tracking app, on staging during training a
 
 > **Staging is for practice.** Every company, person, container and amount on staging is made up. Never enter real client data there.
 
+## Practice accounts (staging only)
+
+Use these on `https://ngb-logistics-staging.vercel.app` to try each role. They share one practice password, which the system administrator gives out. **They don't exist on production**, where everyone gets their own account.
+
+| Role | Email | Name | What they do |
+|---|---|---|---|
+| System administrator | `admin@ngb.example` | Grace Mukamana | Full access. Invites NGB staff, changes roles and settings, can pause and resume notification sending. |
+| Operations manager | `ops.manager@ngb.example` | David Nkusi | Runs daily operations on all shipments: milestones, ETA, exceptions, return terms, incidents, closing and reopening shipments. Retries failed notifications. Invites client users. |
+| Documentation officer | `doc.officer@ngb.example` | Solange Uwera | Registers shipments and containers, uploads documents, keeps the document checklist complete, verifies or rejects documents (including client uploads). |
+| Clearing agent | `clearing.agent@ngb.example` | Emmanuel Kamanzi | Records customs steps (entry, inspection, duties, release, hold) and uploads customs papers, only on shipments assigned to them. |
+| Transport coordinator | `transport@ngb.example` | Yves Tuyishime | Assigns trucks to containers (transporter, truck, route, driver, loading time) and cancels or changes assignments. |
+| Driver / transporter | `driver@ngb.example` | Joseph Hakizimana | Uses `/driver` only: sees the jobs on their own truck, records loading to delivery, adds photos and proof of delivery, reports problems. |
+| Finance officer | `finance@ngb.example` | Josiane Mutoni | Issues invoices, records and verifies payments (receipts), credit notes, disputes, reminders, approves closing on credit, and sees the overdue-invoice report. |
+| Client | `aline@akagera.example` (also `eric@akagera.example`, `jean@kivuhardware.example`, `claudine@kivuhardware.example`, `patrick@nyungweagro.example`, `diane@nyungweagro.example`, `esperance@ruzizipharma.example`, `olivier@ruzizipharma.example`) | Aline Uwase (Akagera Trading) and others | Uses the client portal only, for their own company: tracks shipments and containers, sees the ETA and its reason, downloads shared documents and uploads requested ones, views invoices, payments and receipts, reads notifications, and manages push and WhatsApp settings. Never sees other companies or NGB's internal notes. |
+
+Tips for practising:
+- Use a different browser, or a private window, for each account you're signed in to at the same time. For example: operations manager on the computer, client on a phone.
+- To see a client's view of an update, record it as staff, then check the same shipment as a client of that company. Akagera's shipments are seen by `aline@` and `eric@`, not by the other companies' accounts.
+
 ## Everyone
 
 **Signing in**
