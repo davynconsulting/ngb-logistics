@@ -19,7 +19,7 @@ Release 1 (Phase 1) of the NGB LOGISTICS Cargo Tracking PWA, against FRS v1.0 §
 | `npm run test:db` | Every migration applied to an in-memory Postgres. RLS, grants, RPCs and triggers checked as every role. Security invariants across all migrations. | 782 / 782 |
 | `npm test` | Unit tests: domain rules, money, ISO 6346, Web Push (RFC 8291 vector), sender, templates, CSP, site address | 243 / 243 |
 | `npm run test:live` (dev) | 14 suites, real flows over HTTP against the production build | 477 / 477 |
-| `npm run test:e2e` (CI) | Browser flows, 360 px screen tour with axe (WCAG 2.2 AA), dark-mode contrast, CSP violations, installability | 41 passed on the Task 5 commit; 2 desktop timing failures (confirmation after the 5 s limit), assertion timeout raised to 15 s, see the CI run on this commit |
+| `npm run test:e2e` (CI) | Browser flows, 360 px screen tour with axe (WCAG 2.2 AA), dark-mode contrast, CSP violations, installability | 44 / 44 (CI run 42652328863). An earlier run had 2 desktop timing failures (confirmations after the 5 s limit); the assertion timeout is now 15 s. |
 | Lighthouse (CI) | 8 pages, signed in where relevant | Performance 99–100, Accessibility 100, Best practices 100 |
 | Staging, read-only | `security.mjs`, `reports.mjs` against the deployed site | 19 / 19 (2 sections skipped, see below), 15 / 15 |
 | Backup drill | Export from dev, restored and verified in memory; a tampered copy is rejected | 23 / 23 |
