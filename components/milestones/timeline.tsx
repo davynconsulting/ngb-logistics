@@ -41,7 +41,7 @@ export function MilestoneTimeline({
           <li key={batchId} className="relative">
             <span aria-hidden className={cn("absolute top-1.5 -left-[26px] size-3 rounded-full border-2 border-background",
               allVoided ? "bg-muted-foreground/40" : first.is_override ? "bg-warning" : "bg-primary")} />
-            <div className={cn("flex flex-col gap-1", allVoided && "opacity-60")}>
+            <div className="flex flex-col gap-1">
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                 <span className={cn("font-medium", allVoided && "line-through")}>{labels.get(first.milestone_type) ?? first.milestone_type}</span>
                 <time className="text-sm text-muted-foreground" dateTime={first.event_at}>{formatDateTime(first.event_at, timeZone)}</time>

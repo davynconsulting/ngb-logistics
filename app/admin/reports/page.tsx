@@ -30,10 +30,11 @@ function Section({ title, description, children }: { title: string; description:
 }
 
 /** Wide tables scroll inside their card, never the page (AC-17). */
-function Table({ head, rows, empty }: { head: string[]; rows: React.ReactNode[][]; empty: string }) {
+function Table({ head, rows, empty, label }: { head: string[]; rows: React.ReactNode[][]; empty: string; label: string }) {
   if (rows.length === 0) return <p className="text-sm text-muted-foreground">{empty}</p>;
   return (
-    <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+    <div className="-mx-4 overflow-x-auto px-4 focus-visible:outline-2 focus-visible:outline-ring sm:mx-0 sm:px-0"
+      tabIndex={0} role="region" aria-label={`${label} (scrolls sideways)`}>
       <table className="w-full min-w-[36rem] text-sm">
         <thead>
           <tr className="border-b text-left text-muted-foreground">
@@ -90,15 +91,15 @@ function OpsSections({ r }: { r: OpsReports }) {
   return (
     <>
       <Section title="Port dwell time" description="Discharge to gate-out, for containers that left the port in the period. Estimate: port processing + dispatch allowance.">
-        <Table head={["Port", ...legHead.slice(1)]} empty="No container left the port in this period."
+        <Table label="Port dwell time" head={["Port", ...legHead.slice(1)]} empty="No container left the port in this period."
           rows={r.dwell.map((x) => leg(x.port_name, x))} />
       </Section>
       <Section title="Transit duration" description="Gate-out to delivery, for containers delivered in the period, against the route estimate.">
-        <Table head={["Route", ...legHead.slice(1)]} empty="No container was delivered in this period."
+        <Table label="Transit duration" head={["Route", ...legHead.slice(1)]} empty="No container was delivered in this period."
           rows={r.transit.map((x) => leg(x.route_name, x))} />
       </Section>
       <Section title="Delivery performance" description="On time = delivered by the ETA given when the container left the port (with the ETA tolerance). Returns = empty container back by its deadline.">
-        <Table head={["Client", "Delivered", "On time", "Late", "Average delay", "Returned", "Returned in time", "Return overdue now"]}
+        <Table label="Delivery performance" head={["Client", "Delivered", "On time", "Late", "Average delay", "Returned", "Returned in time", "Return overdue now"]}
           empty="No deliveries or returns in this period."
           rows={r.delivery.map((x) => [
             <Link key="c" href={`/admin/clients/${x.client_id}`} className="underline-offset-4 hover:underline">{x.client_name}</Link>,
@@ -114,7 +115,7 @@ function OpsSections({ r }: { r: OpsReports }) {
 function OverdueSection({ rows }: { rows: OverdueRow[] }) {
   return (
     <Section title="Overdue invoices" description="Unpaid balances past their due date (client's time zone), by days overdue. Never added across currencies.">
-      <Table head={["Client", "Invoices", "1–30 days", "31–60 days", "61–90 days", "Over 90 days", "Total overdue", "Oldest due"]}
+      <Table label="Overdue invoices" head={["Client", "Invoices", "1–30 days", "31–60 days", "61–90 days", "Over 90 days", "Total overdue", "Oldest due"]}
         empty="No overdue invoices."
         rows={rows.map((x) => [
           <span key="c"><Link href="/admin/finance?filter=overdue" className="underline-offset-4 hover:underline">{x.client_name}</Link>

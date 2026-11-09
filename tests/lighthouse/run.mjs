@@ -52,6 +52,7 @@ for (const [who, paths] of runs) {
       port: DEBUG, output: "html", logLevel: "error", disableStorageReset: true,
       onlyCategories: ["performance", "accessibility", "best-practices"],
     });
+    if (new URL(r.lhr.finalDisplayedUrl).pathname !== p) failures.push(`${p}: Lighthouse ended on ${r.lhr.finalDisplayedUrl} (not signed in?)`);
     const c = r.lhr.categories;
     const score = (k) => Math.round((c[k]?.score ?? 0) * 100);
     rows.push({ page: p, user: who ?? "signed out", performance: score("performance"), accessibility: score("accessibility"), "best-practices": score("best-practices"),

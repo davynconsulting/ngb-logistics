@@ -75,7 +75,7 @@
   --muted-foreground: oklch(0.5 0.025 255);
   --accent: oklch(0.95 0.015 250);
   --accent-foreground: oklch(0.28 0.06 255);
-  --destructive: oklch(0.55 0.22 27);
+  --destructive: oklch(0.52 0.22 27);  /* 5.0:1 as badge text on its 10% tint */
   --border: oklch(0.91 0.01 250);
   --input: oklch(0.89 0.012 250);
   --ring: oklch(0.55 0.12 255);

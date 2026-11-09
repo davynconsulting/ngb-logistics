@@ -25,7 +25,7 @@ async function check(page: Page, path: string, problems: Problem[], label = path
   if (overflow > 0) problems.push({ page: label, kind: "horizontal-scroll", detail: `${overflow}px wider than the screen` });
   const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
   for (const v of axe.violations) {
-    const where = v.nodes.slice(0, 3).map((n) => n.target.join(" ")).join(" | ");
+    const where = v.nodes.slice(0, 3).map((n) => `${n.target.join(" ")}${n.any[0]?.message ? ` [${n.any[0].message}]` : ""}`).join(" | ");
     problems.push({ page: label, kind: `${v.id} (${v.impact})`, detail: `${v.help}: ${where}${v.nodes.length > 3 ? ` (+${v.nodes.length - 3} more)` : ""}` });
   }
 }
