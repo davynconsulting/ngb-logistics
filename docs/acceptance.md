@@ -111,7 +111,7 @@ The run added fictional TEST shipments, invoices and notifications to staging.
 - [ ] Someone owns `/admin/notifications` and the exceptions queue daily.
 
 **Housekeeping**
-- [ ] Clean up dev test data (or keep dev as a test-only project).
+- [x] Dev test data: decided (9 Nov 2026) to keep dev as a test-only project. Test runs add data on every run, and append-only history (milestones, payments, audit log) is deliberately not deletable. Real data never goes on dev.
 - [x] Moved `shadcn` to devDependencies: `npm audit --omit=dev` now reports 0 vulnerabilities (was 6 low/moderate). It's needed only at build time (`globals.css` imports its Tailwind styles).
 - [x] Deleted the backup drill copy (9 Nov 2026).
 - [ ] Screen-reader pass (VoiceOver / TalkBack) during the pilot.
